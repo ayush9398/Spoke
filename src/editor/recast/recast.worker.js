@@ -1,5 +1,4 @@
 import Recast from "recast-wasm/dist/recast.js";
-import recastWasmUrl from "recast-wasm/dist/recast.wasm";
 
 const defaultParams = {
   cellSize: 0.166,
@@ -17,18 +16,22 @@ const defaultParams = {
   detailSampleMaxError: 1
 };
 
-const recast = Recast({
-  locateFile(path) {
-    if (path.endsWith(".wasm")) {
-      return new URL(recastWasmUrl, process.env.BASE_ASSETS_PATH || "https://hubs.local:9090").href;
-    }
-  }
-});
+let recast = null;
 
 self.onmessage = async event => {
   const message = event.data;
 
   try {
+    if (!recast) {
+      recast = Recast({
+        locateFile(path) {
+          if (path.endsWith(".wasm")) {
+            return message.params.wasmUrl;
+          }
+        }
+      });
+    }
+
     await recast.ready;
 
     if (!recast.loadArray(message.verts, message.faces)) {

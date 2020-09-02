@@ -1,11 +1,33 @@
-import THREE from "../../vendor/three";
+import {
+  ShaderMaterial,
+  Vector2,
+  Matrix4,
+  Vector3,
+  Color,
+  LinearFilter,
+  RGBAFormat,
+  MeshBasicMaterial,
+  DoubleSide,
+  WebGLRenderTarget,
+  MeshDepthMaterial,
+  RGBADepthPacking,
+  NoBlending,
+  UniformsUtils,
+  OrthographicCamera,
+  Scene,
+  Mesh,
+  PlaneBufferGeometry,
+  Layers
+} from "three";
+import { CopyShader } from "three/examples/jsm/shaders/CopyShader";
+import { Pass } from "three/examples/jsm/postprocessing/EffectComposer";
 
 /**
  * Adapted from THREE.OutlinePass
  * Original author spidersharma / http://eduperiment.com/
  */
 
-class DepthMaskMaterial extends THREE.ShaderMaterial {
+class DepthMaskMaterial extends ShaderMaterial {
   constructor(camera) {
     const cameraType = camera.isPerspectiveCamera ? "perspective" : "orthographic";
     super({
@@ -14,8 +36,8 @@ class DepthMaskMaterial extends THREE.ShaderMaterial {
       },
       uniforms: {
         depthTexture: { value: null },
-        cameraNearFar: { value: new THREE.Vector2(0.5, 0.5) },
-        textureMatrix: { value: new THREE.Matrix4() }
+        cameraNearFar: { value: new Vector2(0.5, 0.5) },
+        textureMatrix: { value: new Matrix4() }
       },
 
       vertexShader: `
@@ -53,12 +75,12 @@ class DepthMaskMaterial extends THREE.ShaderMaterial {
   }
 }
 
-class EdgeDetectionMaterial extends THREE.ShaderMaterial {
+class EdgeDetectionMaterial extends ShaderMaterial {
   constructor() {
     super({
       uniforms: {
         maskTexture: { value: null },
-        texSize: { value: new THREE.Vector2(0.5, 0.5) }
+        texSize: { value: new Vector2(0.5, 0.5) }
       },
 
       vertexShader: `
@@ -93,13 +115,13 @@ class EdgeDetectionMaterial extends THREE.ShaderMaterial {
   }
 }
 
-class OverlayMaterial extends THREE.ShaderMaterial {
+class OverlayMaterial extends ShaderMaterial {
   constructor() {
     super({
       uniforms: {
         edgeTexture: { value: null },
-        edgeColor: { value: new THREE.Vector3(1.0, 1.0, 1.0) },
-        texSize: { value: new THREE.Vector2(0.0, 0.0) }
+        edgeColor: { value: new Vector3(1.0, 1.0, 1.0) },
+        texSize: { value: new Vector2(0.0, 0.0) }
       },
 
       vertexShader: `
@@ -135,53 +157,52 @@ class OverlayMaterial extends THREE.ShaderMaterial {
   }
 }
 
-export default class OutlinePass extends THREE.Pass {
-  constructor(resolution, scene, camera, selectedObjects) {
+export default class OutlinePass extends Pass {
+  constructor(resolution, scene, camera, selectedObjects, spokeRenderer) {
     super();
     this.renderScene = scene;
     this.renderCamera = camera;
     this.selectedObjects = selectedObjects;
+    this.spokeRenderer = spokeRenderer;
     this.selectedRenderables = [];
     this.nonSelectedRenderables = [];
-    this.edgeColor = new THREE.Color(1, 1, 1);
-    this.resolution = new THREE.Vector2(resolution.x, resolution.y);
+    this.edgeColor = new Color(1, 1, 1);
+    this.resolution = new Vector2(resolution.x, resolution.y);
 
-    const pars = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
+    const pars = { minFilter: LinearFilter, magFilter: LinearFilter, format: RGBAFormat };
 
-    this.maskBufferMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    this.maskBufferMaterial.side = THREE.DoubleSide;
-    this.renderTargetMaskBuffer = new THREE.WebGLRenderTarget(this.resolution.x, this.resolution.y, pars);
+    this.maskBufferMaterial = new MeshBasicMaterial({ color: 0xffffff });
+    this.maskBufferMaterial.side = DoubleSide;
+    this.renderTargetMaskBuffer = new WebGLRenderTarget(this.resolution.x, this.resolution.y, pars);
     this.renderTargetMaskBuffer.texture.name = "OutlinePass.mask";
     this.renderTargetMaskBuffer.texture.generateMipmaps = false;
 
-    this.depthMaterial = new THREE.MeshDepthMaterial();
-    this.depthMaterial.side = THREE.DoubleSide;
-    this.depthMaterial.depthPacking = THREE.RGBADepthPacking;
-    this.depthMaterial.blending = THREE.NoBlending;
+    this.depthMaterial = new MeshDepthMaterial();
+    this.depthMaterial.side = DoubleSide;
+    this.depthMaterial.depthPacking = RGBADepthPacking;
+    this.depthMaterial.blending = NoBlending;
 
     this.depthMaskMaterial = new DepthMaskMaterial(this.renderCamera);
-    this.depthMaskMaterial.side = THREE.DoubleSide;
+    this.depthMaskMaterial.side = DoubleSide;
 
-    this.renderTargetDepthBuffer = new THREE.WebGLRenderTarget(this.resolution.x, this.resolution.y, pars);
+    this.renderTargetDepthBuffer = new WebGLRenderTarget(this.resolution.x, this.resolution.y, pars);
     this.renderTargetDepthBuffer.texture.name = "OutlinePass.depth";
     this.renderTargetDepthBuffer.texture.generateMipmaps = false;
 
     this.edgeDetectionMaterial = new EdgeDetectionMaterial();
-    this.renderTargetEdgeBuffer = new THREE.WebGLRenderTarget(this.resolution.x, this.resolution.y, pars);
+    this.renderTargetEdgeBuffer = new WebGLRenderTarget(this.resolution.x, this.resolution.y, pars);
     this.renderTargetEdgeBuffer.texture.name = "OutlinePass.edge";
     this.renderTargetEdgeBuffer.texture.generateMipmaps = false;
 
     this.overlayMaterial = new OverlayMaterial();
 
-    if (THREE.CopyShader === undefined) console.error("THREE.OutlinePass relies on THREE.CopyShader");
-    const copyShader = THREE.CopyShader;
-    this.copyUniforms = THREE.UniformsUtils.clone(copyShader.uniforms);
+    this.copyUniforms = UniformsUtils.clone(CopyShader.uniforms);
     this.copyUniforms["opacity"].value = 1.0;
-    this.copyMaterial = new THREE.ShaderMaterial({
+    this.copyMaterial = new ShaderMaterial({
       uniforms: this.copyUniforms,
-      vertexShader: copyShader.vertexShader,
-      fragmentShader: copyShader.fragmentShader,
-      blending: THREE.NoBlending,
+      vertexShader: CopyShader.vertexShader,
+      fragmentShader: CopyShader.fragmentShader,
+      blending: NoBlending,
       depthTest: false,
       depthWrite: false,
       transparent: true
@@ -190,17 +211,18 @@ export default class OutlinePass extends THREE.Pass {
     this.enabled = true;
     this.needsSwap = false;
 
-    this.oldClearColor = new THREE.Color();
+    this.oldClearColor = new Color();
     this.oldClearAlpha = 1;
 
-    this.outlineCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.outlineScene = new THREE.Scene();
+    this.outlineCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.outlineScene = new Scene();
 
-    this.quad = new THREE.Mesh(new THREE.PlaneBufferGeometry(2, 2), null);
+    this.quad = new Mesh(new PlaneBufferGeometry(2, 2), null);
     this.quad.frustumCulled = false; // Avoid getting clipped
     this.outlineScene.add(this.quad);
 
-    this.textureMatrix = new THREE.Matrix4();
+    this.textureMatrix = new Matrix4();
+    this.renderableLayers = new Layers();
   }
 
   render(renderer, writeBuffer, readBuffer, delta, maskActive) {
@@ -218,7 +240,11 @@ export default class OutlinePass extends THREE.Pass {
       for (const selectedObject of this.selectedObjects) {
         selectedObject.traverse(child => {
           // Don't include helper objects in the outline.
-          if ((child.isMesh || child.isLine || child.isSprite) && !child.isHelper) {
+          if (
+            (child.isMesh || child.isLine || child.isSprite || child.isPoints) &&
+            !child.isHelper &&
+            !child.disableOutline
+          ) {
             this.selectedRenderables.push(child);
 
             // Make selected meshes invisible
@@ -233,11 +259,24 @@ export default class OutlinePass extends THREE.Pass {
 
       // Draw Non Selected objects in the depth buffer
       this.renderScene.overrideMaterial = this.depthMaterial;
-      renderer.render(this.renderScene, this.renderCamera, this.renderTargetDepthBuffer, true);
+      renderer.setRenderTarget(this.renderTargetDepthBuffer);
+      renderer.clear();
+
+      if (this.spokeRenderer.batchManager) {
+        this.spokeRenderer.batchManager.update();
+      }
+
+      renderer.render(this.renderScene, this.renderCamera);
 
       // Restore selected mesh visibility.
       for (const mesh of this.selectedRenderables) {
         mesh.visible = mesh.userData.prevVisible;
+
+        if (!mesh.layers.test(this.renderableLayers)) {
+          mesh.layers.enable(0);
+          mesh.userData.prevDisableRenderLayer = true;
+        }
+
         delete mesh.userData.prevVisible;
       }
 
@@ -248,7 +287,10 @@ export default class OutlinePass extends THREE.Pass {
 
       // Make non selected objects invisible, and draw only the selected objects, by comparing the depth buffer of non selected objects
       this.renderScene.traverse(object => {
-        if ((object.isMesh || object.isLine || object.isSprite) && this.selectedRenderables.indexOf(object) === -1) {
+        if (
+          (object.isMesh || object.isLine || object.isSprite || object.isPoints) &&
+          this.selectedRenderables.indexOf(object) === -1
+        ) {
           this.nonSelectedRenderables.push(object);
 
           // Make non selected meshes invisible
@@ -258,19 +300,33 @@ export default class OutlinePass extends THREE.Pass {
       });
 
       this.renderScene.overrideMaterial = this.depthMaskMaterial;
-      this.depthMaskMaterial.uniforms["cameraNearFar"].value = new THREE.Vector2(
+      this.depthMaskMaterial.uniforms["cameraNearFar"].value = new Vector2(
         this.renderCamera.near,
         this.renderCamera.far
       );
       this.depthMaskMaterial.uniforms["depthTexture"].value = this.renderTargetDepthBuffer.texture;
       this.depthMaskMaterial.uniforms["textureMatrix"].value = this.textureMatrix;
-      renderer.render(this.renderScene, this.renderCamera, this.renderTargetMaskBuffer, true);
+      renderer.setRenderTarget(this.renderTargetMaskBuffer);
+      renderer.clear();
+
+      if (this.spokeRenderer.batchManager) {
+        this.spokeRenderer.batchManager.update();
+      }
+
+      renderer.render(this.renderScene, this.renderCamera);
       this.renderScene.overrideMaterial = null;
 
       // Restore non-selected mesh visibility
       for (const mesh of this.nonSelectedRenderables) {
         mesh.visible = mesh.userData.prevVisible;
         delete mesh.userData.prevVisible;
+      }
+
+      for (const mesh of this.selectedRenderables) {
+        if (mesh.userData.prevDisableRenderLayer) {
+          mesh.layers.disable(0);
+          delete mesh.userData.prevDisableRenderLayer;
+        }
       }
 
       this.selectedRenderables = [];
@@ -281,24 +337,27 @@ export default class OutlinePass extends THREE.Pass {
       // Apply Edge Detection Pass
       this.quad.material = this.edgeDetectionMaterial;
       this.edgeDetectionMaterial.uniforms["maskTexture"].value = this.renderTargetMaskBuffer.texture;
-      this.edgeDetectionMaterial.uniforms["texSize"].value = new THREE.Vector2(
+      this.edgeDetectionMaterial.uniforms["texSize"].value = new Vector2(
         this.renderTargetMaskBuffer.width,
         this.renderTargetMaskBuffer.height
       );
-      renderer.render(this.outlineScene, this.outlineCamera, this.renderTargetEdgeBuffer, true);
+      renderer.setRenderTarget(this.renderTargetEdgeBuffer);
+      renderer.clear();
+      renderer.render(this.outlineScene, this.outlineCamera);
 
       // Blend it additively over the input texture
       this.quad.material = this.overlayMaterial;
       this.overlayMaterial.uniforms["edgeTexture"].value = this.renderTargetEdgeBuffer.texture;
       this.overlayMaterial.uniforms["edgeColor"].value = this.edgeColor;
-      this.overlayMaterial.uniforms["texSize"].value = new THREE.Vector2(
+      this.overlayMaterial.uniforms["texSize"].value = new Vector2(
         this.renderTargetEdgeBuffer.width,
         this.renderTargetEdgeBuffer.height
       );
 
       if (maskActive) renderer.context.enable(renderer.context.STENCIL_TEST);
 
-      renderer.render(this.outlineScene, this.outlineCamera, readBuffer, false);
+      renderer.setRenderTarget(readBuffer);
+      renderer.render(this.outlineScene, this.outlineCamera);
 
       renderer.setClearColor(this.oldClearColor, this.oldClearAlpha);
       renderer.autoClear = oldAutoClear;
@@ -308,6 +367,7 @@ export default class OutlinePass extends THREE.Pass {
     if (this.renderToScreen) {
       this.quad.material = this.copyMaterial;
       this.copyUniforms["tDiffuse"].value = readBuffer.texture;
+      renderer.setRenderTarget(null);
       renderer.render(this.outlineScene, this.outlineCamera);
     }
   }

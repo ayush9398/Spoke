@@ -1,46 +1,44 @@
-import Command from "./commands/Command";
-
 /**
  * @author dforrer / https://github.com/dforrer
  * Developed as part of a project at University of Applied Sciences and Arts Northwestern Switzerland (www.fhnw.ch)
  */
 
 export default class History {
-  constructor(editor) {
-    this.editor = editor;
+  constructor() {
     this.undos = [];
     this.redos = [];
     this.lastCmdTime = new Date();
     this.idCounter = 0;
-
-    this.historyDisabled = false;
-
-    //Set editor-reference in Command
-
-    Command.editor = editor;
+    this.commandUpdatesEnabled = true; // Used for testing
+    this.debug = false;
   }
 
-  execute(cmd, optionalName) {
+  execute(cmd) {
     const lastCmd = this.undos[this.undos.length - 1];
     const timeDifference = new Date().getTime() - this.lastCmdTime.getTime();
 
-    const isUpdatableCmd =
+    if (
+      this.commandUpdatesEnabled &&
       lastCmd &&
-      lastCmd.updatable &&
-      cmd.updatable &&
-      lastCmd.object === cmd.object &&
-      lastCmd.type === cmd.type &&
-      lastCmd.propertyName === cmd.propertyName;
-
-    if (isUpdatableCmd && timeDifference < 1000) {
+      lastCmd.constructor === cmd.constructor &&
+      timeDifference < 1000 &&
+      lastCmd.shouldUpdate(cmd)
+    ) {
       lastCmd.update(cmd);
       cmd = lastCmd;
+
+      if (this.debug) {
+        console.log(`update: ${cmd}`);
+      }
     } else {
       // the command is not updatable and is added as a new part of the history
       this.undos.push(cmd);
       cmd.id = ++this.idCounter;
-      cmd.name = optionalName !== undefined ? optionalName : cmd.name;
       cmd.execute();
+
+      if (this.debug) {
+        console.log(`execute: ${cmd}`);
+      }
     }
 
     this.lastCmdTime = new Date();
@@ -48,15 +46,43 @@ export default class History {
     // clearing all the redo-commands
 
     this.redos = [];
-    this.editor.signals.historyChanged.dispatch(cmd);
+
+    return cmd;
   }
 
-  undo() {
-    if (this.historyDisabled) {
-      alert("Undo/Redo disabled while scene is playing.");
+  revert(checkpointId) {
+    let cmd = undefined;
+
+    if (this.undos.length === 0) {
       return;
     }
 
+    const lastCmd = this.undos[this.undos.length - 1];
+
+    if (lastCmd && checkpointId > lastCmd.id) {
+      console.warn("Tried to revert back to an undo action with an id greater than the last action");
+      return;
+    }
+
+    do {
+      if (this.undos.length > 0) {
+        cmd = this.undos.pop();
+      } else {
+        cmd = undefined;
+      }
+
+      if (cmd !== undefined) {
+        cmd.undo();
+        this.redos.push(cmd);
+
+        if (this.debug) {
+          console.log(`revert: ${cmd}`);
+        }
+      }
+    } while (cmd && checkpointId !== cmd.id);
+  }
+
+  undo() {
     let cmd = undefined;
 
     if (this.undos.length > 0) {
@@ -66,18 +92,16 @@ export default class History {
     if (cmd !== undefined) {
       cmd.undo();
       this.redos.push(cmd);
-      this.editor.signals.historyChanged.dispatch(cmd);
+
+      if (this.debug) {
+        console.log(`undo: ${cmd}`);
+      }
     }
 
     return cmd;
   }
 
   redo() {
-    if (this.historyDisabled) {
-      alert("Undo/Redo disabled while scene is playing.");
-      return;
-    }
-
     let cmd = undefined;
 
     if (this.redos.length > 0) {
@@ -85,19 +109,24 @@ export default class History {
     }
 
     if (cmd !== undefined) {
-      cmd.execute();
+      cmd.execute(true);
       this.undos.push(cmd);
-      this.editor.signals.historyChanged.dispatch(cmd);
+
+      if (this.debug) {
+        console.log(`redo: ${cmd}`);
+      }
     }
 
     return cmd;
+  }
+
+  getDebugLog() {
+    return this.undos.map(cmd => cmd.toString()).join("\n");
   }
 
   clear() {
     this.undos = [];
     this.redos = [];
     this.idCounter = 0;
-
-    this.editor.signals.historyChanged.dispatch();
   }
 }

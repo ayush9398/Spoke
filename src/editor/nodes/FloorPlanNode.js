@@ -1,13 +1,14 @@
+import configs from "../../configs";
 import EditorNodeMixin from "./EditorNodeMixin";
-import THREE from "../../vendor/three";
+import { Mesh, MeshBasicMaterial, Box3, Vector3, PlaneBufferGeometry, Object3D } from "three";
 import FloorPlan from "../objects/FloorPlan";
-import ModelNode from "./ModelNode";
 import GroundPlaneNode from "./GroundPlaneNode";
 import BoxColliderNode from "./BoxColliderNode";
 import mergeMeshGeometries from "../utils/mergeMeshGeometries";
 import RecastClient from "../recast/RecastClient";
 import HeightfieldClient from "../heightfield/HeightfieldClient";
 import SpawnPointNode from "../nodes/SpawnPointNode";
+import * as recastWasmUrl from "recast-wasm/dist/recast.wasm";
 
 const recastClient = new RecastClient();
 const heightfieldClient = new HeightfieldClient();
@@ -34,7 +35,9 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
       agentRadius,
       agentMaxClimb,
       agentMaxSlope,
-      regionMinSize
+      regionMinSize,
+      maxTriangles,
+      forceTrimesh
     } = json.components.find(c => c.name === "floor-plan").props;
 
     node.autoCellSize = autoCellSize;
@@ -45,6 +48,8 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
     node.agentMaxClimb = agentMaxClimb;
     node.agentMaxSlope = agentMaxSlope;
     node.regionMinSize = regionMinSize;
+    node.maxTriangles = maxTriangles || 1000;
+    node.forceTrimesh = forceTrimesh || false;
 
     return node;
   }
@@ -59,12 +64,18 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
     this.agentMaxClimb = 0.3;
     this.agentMaxSlope = 45;
     this.regionMinSize = 4;
+    this.maxTriangles = 1000;
+    this.forceTrimesh = false;
     this.heightfieldMesh = null;
   }
 
   onSelect() {
     if (this.navMesh) {
       this.navMesh.visible = true;
+    }
+
+    if (this.trimesh) {
+      this.trimesh.visible = true;
     }
 
     if (this.heightfieldMesh) {
@@ -77,12 +88,17 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
       this.navMesh.visible = false;
     }
 
+    if (this.trimesh) {
+      this.trimesh.visible = false;
+    }
+
     if (this.heightfieldMesh) {
       this.heightfieldMesh.visible = false;
     }
   }
 
   async generate(signal) {
+    window.scene = this;
     const collidableMeshes = [];
     const walkableMeshes = [];
 
@@ -92,34 +108,28 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
       walkableMeshes.push(groundPlaneNode.walkableMesh);
     }
 
-    const modelNodes = this.editor.scene.getNodesByType(ModelNode);
+    this.editor.scene.traverse(object => {
+      if (object.isNode && object.model && (object.collidable || object.walkable)) {
+        object.model.traverse(child => {
+          if (child.isMesh) {
+            if (object.collidable) {
+              collidableMeshes.push(child);
+            }
 
-    for (const node of modelNodes) {
-      const model = node.model;
-
-      if (!model || !(node.collidable || node.walkable)) {
-        continue;
+            if (object.walkable) {
+              walkableMeshes.push(child);
+            }
+          }
+        });
       }
-
-      model.traverse(child => {
-        if (child.isMesh) {
-          if (node.collidable) {
-            collidableMeshes.push(child);
-          }
-
-          if (node.walkable) {
-            walkableMeshes.push(child);
-          }
-        }
-      });
-    }
+    });
 
     const boxColliderNodes = this.editor.scene.getNodesByType(BoxColliderNode);
 
     for (const node of boxColliderNodes) {
       if (node.walkable) {
         const helperMesh = node.helper.object;
-        const boxColliderMesh = new THREE.Mesh(helperMesh.geometry, new THREE.MeshBasicMaterial());
+        const boxColliderMesh = new Mesh(helperMesh.geometry, new MeshBasicMaterial());
         boxColliderMesh.applyMatrix(node.matrixWorld);
         boxColliderMesh.updateMatrixWorld();
         walkableMeshes.push(boxColliderMesh);
@@ -128,8 +138,8 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
 
     const walkableGeometry = mergeMeshGeometries(walkableMeshes);
 
-    const box = new THREE.Box3().setFromBufferAttribute(walkableGeometry.attributes.position);
-    const size = new THREE.Vector3();
+    const box = new Box3().setFromBufferAttribute(walkableGeometry.attributes.position);
+    const size = new Vector3();
     box.getSize(size);
     if (Math.max(size.x, size.y, size.z) > 2000) {
       throw new Error(
@@ -153,48 +163,45 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
         agentRadius: this.agentRadius,
         agentMaxClimb: this.agentMaxClimb,
         agentMaxSlope: this.agentMaxSlope,
-        regionMinSize: this.regionMinSize
+        regionMinSize: this.regionMinSize,
+        wasmUrl: new URL(recastWasmUrl, configs.BASE_ASSETS_PATH || window.location).href
       },
       signal
     );
 
-    const navMesh = new THREE.Mesh(
-      navGeometry,
-      new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.2 })
-    );
+    const navMesh = new Mesh(navGeometry, new MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.2 }));
 
     this.setNavMesh(navMesh);
 
-    if (this.editor.selected === this) {
-      navMesh.visible = true;
+    navMesh.visible = this.editor.selected.indexOf(this) !== -1;
+
+    const collidableGeometry = mergeMeshGeometries(collidableMeshes);
+
+    let heightfield = null;
+    if (!this.forceTrimesh) {
+      const spawnPoints = this.editor.scene.getNodesByType(SpawnPointNode);
+
+      let minY = Number.POSITIVE_INFINITY;
+      for (let j = 0; j < spawnPoints.length; j++) {
+        minY = Math.min(minY, spawnPoints[j].position.y);
+      }
+      heightfield = await heightfieldClient.buildHeightfield(
+        collidableGeometry,
+        { minY: minY, agentHeight: this.agentHeight, triangleThreshold: this.maxTriangles },
+        signal
+      );
     }
 
-    const heightfieldGeometry = mergeMeshGeometries(collidableMeshes);
+    if (heightfield !== null) {
+      this.setTrimesh(null);
+      this.setHeightfield(heightfield);
 
-    const spawnPoints = this.editor.scene.getNodesByType(SpawnPointNode);
+      if (this.heightfieldMesh) {
+        this.remove(this.heightfieldMesh);
+      }
 
-    let minY = Number.POSITIVE_INFINITY;
-    for (let j = 0; j < spawnPoints.length; j++) {
-      minY = Math.min(minY, spawnPoints[j].position.y);
-    }
-
-    const heightfield = await heightfieldClient.buildHeightfield(
-      heightfieldGeometry,
-      { minY: minY, agentHeight: this.agentHeight },
-      signal
-    );
-
-    this.setHeightfield(heightfield);
-
-    if (this.heightfieldMesh) {
-      this.remove(this.heightfieldMesh);
-    }
-
-    if (!heightfield) {
-      this.heightfieldMesh = null;
-    } else {
       const segments = heightfield.data[0].length;
-      const heightfieldMeshGeometry = new THREE.PlaneBufferGeometry(
+      const heightfieldMeshGeometry = new PlaneBufferGeometry(
         heightfield.width,
         heightfield.length,
         segments - 1,
@@ -207,10 +214,11 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
         vertices[j + 1] = heightfield.data[Math.floor(i / segments)][i % segments];
       }
 
-      const heightfieldMesh = new THREE.Mesh(
+      const heightfieldMesh = new Mesh(
         heightfieldMeshGeometry,
-        new THREE.MeshBasicMaterial({ wireframe: true, color: 0xffff00 })
+        new MeshBasicMaterial({ wireframe: true, color: 0xffff00 })
       );
+      heightfieldMesh.name = "HeightfieldMesh";
 
       this.heightfieldMesh = heightfieldMesh;
 
@@ -219,20 +227,35 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
       this.heightfieldMesh.layers.set(1);
       heightfieldMesh.position.set(heightfield.offset.x, 0, heightfield.offset.z);
 
-      if (this.editor.selected !== this) {
-        this.heightfieldMesh.visible = false;
+      this.heightfieldMesh.visible = this.editor.selected.indexOf(this) !== -1;
+    } else {
+      const trimesh = new Mesh(collidableGeometry, new MeshBasicMaterial({ wireframe: true, color: 0xff0000 }));
+
+      this.setTrimesh(trimesh);
+      if (this.heightfieldMesh) {
+        this.remove(this.heightfieldMesh);
+      }
+
+      if (this.editor.selected.indexOf(this) !== -1) {
+        trimesh.visible = true;
       }
     }
 
     return this;
   }
 
-  copy(source, recursive) {
+  copy(source, recursive = true) {
+    if (recursive) {
+      this.remove(this.heightfieldMesh);
+    }
+
     super.copy(source, recursive);
 
-    for (const child of source.children) {
-      if (recursive && child !== source.heightfieldMesh) {
-        this.add(child.clone());
+    if (recursive) {
+      const heightfieldMeshIndex = source.children.findIndex(child => child === source.heightfieldMesh);
+
+      if (heightfieldMeshIndex !== -1) {
+        this.heightfieldMesh = this.children[heightfieldMeshIndex];
       }
     }
 
@@ -244,6 +267,8 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
     this.agentMaxClimb = source.agentMaxClimb;
     this.agentMaxSlope = source.agentMaxSlope;
     this.regionMinSize = source.regionMinSize;
+    this.maxTriangles = source.maxTriangles;
+    this.forceTrimesh = source.forceTrimesh;
     return this;
   }
 
@@ -257,21 +282,56 @@ export default class FloorPlanNode extends EditorNodeMixin(FloorPlan) {
         agentRadius: this.agentRadius,
         agentMaxClimb: this.agentMaxClimb,
         agentMaxSlope: this.agentMaxSlope,
-        regionMinSize: this.regionMinSize
+        regionMinSize: this.regionMinSize,
+        maxTriangles: this.maxTriangles,
+        forceTrimesh: this.forceTrimesh
       }
     });
   }
 
   prepareForExport() {
     super.prepareForExport();
-    const material = this.navMesh.material;
-    material.transparent = true;
-    material.opacity = 0;
-    this.addGLTFComponent("visible", { visible: false });
-    this.addGLTFComponent("nav-mesh", {});
+
+    if (this.heightfieldMesh) {
+      this.remove(this.heightfieldMesh);
+    }
+
+    const navMeshMaterial = this.navMesh.material;
+    navMeshMaterial.transparent = true;
+    navMeshMaterial.opacity = 0;
+
+    this.navMesh.name = "navMesh";
+    this.navMesh.userData.gltfExtensions = {
+      MOZ_hubs_components: {
+        "nav-mesh": {},
+        visible: { visible: false }
+      }
+    };
+
+    if (this.trimesh) {
+      this.trimesh.name = "trimesh";
+      const trimeshMaterial = this.trimesh.material;
+      trimeshMaterial.transparent = true;
+      trimeshMaterial.opacity = 0;
+      trimeshMaterial.wireframe = false;
+
+      this.trimesh.userData.gltfExtensions = {
+        MOZ_hubs_components: {
+          trimesh: {},
+          visible: { visible: false }
+        }
+      };
+    }
 
     if (this.heightfield) {
-      this.addGLTFComponent("heightfield", this.heightfield);
+      const heightfield = new Object3D();
+      heightfield.name = "heightfield";
+      heightfield.userData.gltfExtensions = {
+        MOZ_hubs_components: {
+          heightfield: this.heightfield
+        }
+      };
+      this.add(heightfield);
     }
   }
 }

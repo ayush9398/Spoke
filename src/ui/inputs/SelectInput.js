@@ -1,7 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import Select from "react-select";
-import "../styles/vendor/react-select/index.scss";
+import CreatableSelect from "react-select/creatable";
 
 const staticStyle = {
   container: base => ({
@@ -58,7 +58,17 @@ const staticStyle = {
   })
 };
 
-export default function SelectInput({ value, options, onChange, placeholder, disabled, error, ...rest }) {
+export default function SelectInput({
+  value,
+  options,
+  onChange,
+  placeholder,
+  disabled,
+  error,
+  styles,
+  creatable,
+  ...rest
+}) {
   const selectedOption =
     options.find(o => {
       if (o === null) {
@@ -75,11 +85,14 @@ export default function SelectInput({ value, options, onChange, placeholder, dis
     placeholder: (base, { isDisabled }) => ({
       ...base,
       color: isDisabled ? "grey" : error ? "red" : "white"
-    })
+    }),
+    ...styles
   };
 
+  const Component = creatable ? CreatableSelect : Select;
+
   return (
-    <Select
+    <Component
       {...rest}
       styles={dynamicStyle}
       value={selectedOption}
@@ -107,8 +120,10 @@ SelectInput.propTypes = {
       label: PropTypes.string
     })
   ),
+  styles: PropTypes.object,
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
   error: PropTypes.bool,
-  disabled: PropTypes.bool
+  disabled: PropTypes.bool,
+  creatable: PropTypes.bool
 };

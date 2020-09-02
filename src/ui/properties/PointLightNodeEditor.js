@@ -5,6 +5,7 @@ import InputGroup from "../inputs/InputGroup";
 import ColorInput from "../inputs/ColorInput";
 import NumericInputGroup from "../inputs/NumericInputGroup";
 import LightShadowProperties from "./LightShadowProperties";
+import { Lightbulb } from "styled-icons/fa-solid/Lightbulb";
 
 export default class PointLightNodeEditor extends Component {
   static propTypes = {
@@ -12,20 +13,20 @@ export default class PointLightNodeEditor extends Component {
     node: PropTypes.object
   };
 
-  static iconClassName = "fa-lightbulb";
+  static iconComponent = Lightbulb;
 
   static description = "A light which emits in all directions from a single point.";
 
   onChangeColor = color => {
-    this.props.editor.setNodeProperty(this.props.node, "color", color);
+    this.props.editor.setPropertySelected("color", color);
   };
 
   onChangeIntensity = intensity => {
-    this.props.editor.setNodeProperty(this.props.node, "intensity", intensity);
+    this.props.editor.setPropertySelected("intensity", intensity);
   };
 
   onChangeRange = range => {
-    this.props.editor.setNodeProperty(this.props.node, "range", range);
+    this.props.editor.setPropertySelected("range", range);
   };
 
   render() {
@@ -39,11 +40,23 @@ export default class PointLightNodeEditor extends Component {
         <NumericInputGroup
           name="Intensity"
           min={0}
+          smallStep={0.001}
+          mediumStep={0.01}
+          largeStep={0.1}
           value={node.intensity}
           onChange={this.onChangeIntensity}
           unit="cd"
         />
-        <NumericInputGroup name="Range" min={0} value={node.range} onChange={this.onChangeRange} unit="m" />
+        <NumericInputGroup
+          name="Range"
+          min={0}
+          smallStep={0.1}
+          mediumStep={1}
+          largeStep={10}
+          value={node.range}
+          onChange={this.onChangeRange}
+          unit="m"
+        />
         <LightShadowProperties node={node} editor={editor} />
       </NodeEditor>
     );

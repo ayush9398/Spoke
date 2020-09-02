@@ -3,6 +3,8 @@ import PropTypes from "prop-types";
 import NodeEditor from "./NodeEditor";
 import InputGroup from "../inputs/InputGroup";
 import ModelInput from "../inputs/ModelInput";
+import { Magic } from "styled-icons/fa-solid/Magic";
+import { GLTFInfo } from "../inputs/GLTFInfo";
 
 export default class SpawnerNodeEditor extends Component {
   static propTypes = {
@@ -10,16 +12,12 @@ export default class SpawnerNodeEditor extends Component {
     node: PropTypes.object
   };
 
-  static iconClassName = "fa-magic";
+  static iconComponent = Magic;
 
   static description = "Spawns a model as an interactable object.";
 
-  onChangeSrc = (src, { scaleToFit }) => {
-    if (scaleToFit) {
-      this.props.node.scaleToFit = scaleToFit;
-    }
-
-    this.props.editor.setNodeProperty(this.props.node, "src", src);
+  onChangeSrc = (src, initialProps) => {
+    this.props.editor.setPropertiesSelected({ ...initialProps, src });
   };
 
   render() {
@@ -27,9 +25,10 @@ export default class SpawnerNodeEditor extends Component {
 
     return (
       <NodeEditor {...this.props} description={SpawnerNodeEditor.description}>
-        <InputGroup name="Model">
+        <InputGroup name="Model Url">
           <ModelInput value={node.src} onChange={this.onChangeSrc} />
         </InputGroup>
+        {node.model && <GLTFInfo node={node} />}
       </NodeEditor>
     );
   }

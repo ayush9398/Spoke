@@ -5,6 +5,7 @@ import InputGroup from "../inputs/InputGroup";
 import SelectInput from "../inputs/SelectInput";
 import BooleanInput from "../inputs/BooleanInput";
 import StringInput from "../inputs/StringInput";
+import { Running } from "styled-icons/fa-solid/Running";
 
 const componentOptions = [
   {
@@ -26,10 +27,11 @@ const componentOptions = [
 export default class TriggerVolumeNodeEditor extends Component {
   static propTypes = {
     editor: PropTypes.object,
-    node: PropTypes.object
+    node: PropTypes.object,
+    multiEdit: PropTypes.bool
   };
 
-  static iconClassName = "fa-running";
+  static iconComponent = Running;
 
   static description = "Sets a property on the target object on enter and leave.";
 
@@ -42,7 +44,7 @@ export default class TriggerVolumeNodeEditor extends Component {
   }
 
   onChangeTarget = target => {
-    this.props.editor.setNodeProperties(this.props.node, {
+    this.props.editor.setPropertiesSelected({
       target,
       enterComponent: null,
       enterProperty: null,
@@ -54,8 +56,7 @@ export default class TriggerVolumeNodeEditor extends Component {
   };
 
   onChangeEnterComponent = value => {
-    const { node, editor } = this.props;
-    editor.setNodeProperties(node, {
+    this.props.editor.setPropertiesSelected({
       enterComponent: value,
       enterProperty: null,
       enterValue: null
@@ -63,21 +64,18 @@ export default class TriggerVolumeNodeEditor extends Component {
   };
 
   onChangeEnterProperty = (value, option) => {
-    const { node, editor } = this.props;
-    editor.setNodeProperties(node, {
+    this.props.editor.setPropertiesSelected({
       enterProperty: value,
       enterValue: option.default !== undefined ? option.default : null
     });
   };
 
   onChangeEnterValue = value => {
-    const { node, editor } = this.props;
-    editor.setNodeProperty(node, "enterValue", value);
+    this.props.editor.setPropertySelected("enterValue", value);
   };
 
   onChangeLeaveComponent = value => {
-    const { node, editor } = this.props;
-    editor.setNodeProperties(node, {
+    this.props.editor.setPropertiesSelected({
       leaveComponent: value,
       leaveProperty: null,
       leaveValue: null
@@ -85,16 +83,14 @@ export default class TriggerVolumeNodeEditor extends Component {
   };
 
   onChangeLeaveProperty = (value, option) => {
-    const { node, editor } = this.props;
-    editor.setNodeProperties(node, {
+    this.props.editor.setPropertiesSelected({
       leaveProperty: value,
       leaveValue: option.default !== undefined ? option.default : null
     });
   };
 
   onChangeLeaveValue = value => {
-    const { node, editor } = this.props;
-    editor.setNodeProperty(node, "leaveValue", value);
+    this.props.editor.setPropertySelected("leaveValue", value);
   };
 
   componentDidMount() {
@@ -112,7 +108,7 @@ export default class TriggerVolumeNodeEditor extends Component {
   }
 
   render() {
-    const { node } = this.props;
+    const { node, multiEdit } = this.props;
 
     const targetOption = this.state.options.find(o => o.value === node.target);
     const target = targetOption ? targetOption.value : null;
@@ -150,6 +146,7 @@ export default class TriggerVolumeNodeEditor extends Component {
             value={node.target}
             onChange={this.onChangeTarget}
             options={this.state.options}
+            disabled={multiEdit}
           />
         </InputGroup>
         <InputGroup name="Enter Component">
@@ -158,7 +155,7 @@ export default class TriggerVolumeNodeEditor extends Component {
             value={node.enterComponent}
             onChange={this.onChangeEnterComponent}
             options={filteredComponentOptions}
-            disabled={!target}
+            disabled={multiEdit || !target}
           />
         </InputGroup>
         <InputGroup name="Enter Property">
@@ -167,7 +164,7 @@ export default class TriggerVolumeNodeEditor extends Component {
             value={node.enterProperty}
             onChange={this.onChangeEnterProperty}
             options={filteredEnterPropertyOptions}
-            disabled={!enterComponent}
+            disabled={multiEdit || !enterComponent}
           />
         </InputGroup>
         <InputGroup name="Enter Value">
@@ -175,7 +172,7 @@ export default class TriggerVolumeNodeEditor extends Component {
             <EnterInput
               value={node.enterValue}
               onChange={this.onChangeEnterValue}
-              disabled={!(target && enterComponent && enterProperty)}
+              disabled={multiEdit || !(target && enterComponent && enterProperty)}
             />
           ) : (
             <StringInput disabled />
@@ -187,7 +184,7 @@ export default class TriggerVolumeNodeEditor extends Component {
             value={node.leaveComponent}
             onChange={this.onChangeLeaveComponent}
             options={filteredComponentOptions}
-            disabled={!target}
+            disabled={multiEdit || !target}
           />
         </InputGroup>
         <InputGroup name="Leave Property">
@@ -196,7 +193,7 @@ export default class TriggerVolumeNodeEditor extends Component {
             value={node.leaveProperty}
             onChange={this.onChangeLeaveProperty}
             options={filteredLeavePropertyOptions}
-            disabled={!leaveComponent}
+            disabled={multiEdit || !leaveComponent}
           />
         </InputGroup>
         <InputGroup name="Leave Value">
@@ -204,7 +201,7 @@ export default class TriggerVolumeNodeEditor extends Component {
             <LeaveInput
               value={node.leaveValue}
               onChange={this.onChangeLeaveValue}
-              disabled={!(target && leaveComponent && leaveProperty)}
+              disabled={multiEdit || !(target && leaveComponent && leaveProperty)}
             />
           ) : (
             <StringInput disabled />

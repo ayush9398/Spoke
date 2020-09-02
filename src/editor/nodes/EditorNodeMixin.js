@@ -6,9 +6,10 @@ import {
   isInherits,
   isStatic
 } from "../StaticMode";
-import THREE from "../../vendor/three";
+import { Color, Object3D } from "three";
 import serializeColor from "../utils/serializeColor";
 import LoadingCube from "../objects/LoadingCube";
+import ErrorIcon from "../objects/ErrorIcon";
 
 export default function EditorNodeMixin(Object3DClass) {
   return class extends Object3DClass {
@@ -16,10 +17,14 @@ export default function EditorNodeMixin(Object3DClass) {
 
     static disableTransform = false;
 
+    static useMultiplePlacementMode = false;
+
     static ignoreRaycast = false;
 
     // Used for props like src that have side effects that we don't want to happen in the constructor
     static initialElementProps = {};
+
+    static hideInElementsPanel = false;
 
     static canAddNode(_editor) {
       return true;
@@ -67,26 +72,44 @@ export default function EditorNodeMixin(Object3DClass) {
       this.isNode = true;
       this.isCollapsed = false;
       this.disableTransform = this.constructor.disableTransform;
+      this.useMultiplePlacementMode = this.constructor.useMultiplePlacementMode;
       this.ignoreRaycast = this.constructor.ignoreRaycast;
 
       this.staticMode = StaticModes.Inherits;
       this.originalStaticMode = null;
       this.saveParent = false;
       this.loadingCube = null;
+      this.errorIcon = null;
+      this.issues = [];
     }
 
     clone(recursive) {
       return new this.constructor(this.editor).copy(this, recursive);
     }
 
-    copy(source, recursive) {
+    copy(source, recursive = true) {
+      if (recursive) {
+        this.remove(this.loadingCube);
+        this.remove(this.errorIcon);
+      }
+
       super.copy(source, recursive);
 
-      for (const child of this.children) {
-        if (child instanceof LoadingCube) {
-          this.remove(child);
+      if (recursive) {
+        const loadingCubeIndex = source.children.findIndex(child => child === source.loadingCube);
+
+        if (loadingCubeIndex !== -1) {
+          this.loadingCube = this.children[loadingCubeIndex];
+        }
+
+        const errorIconIndex = source.children.findIndex(child => child === source.errorIcon);
+
+        if (errorIconIndex !== -1) {
+          this.errorIcon = this.children[errorIconIndex];
         }
       }
+
+      this.issues = source.issues.slice();
 
       return this;
     }
@@ -148,13 +171,17 @@ export default function EditorNodeMixin(Object3DClass) {
 
       if (components) {
         for (const componentName in components) {
+          if (!Object.prototype.hasOwnProperty.call(components, componentName)) continue;
+
           const serializedProps = {};
           const componentProps = components[componentName];
 
           for (const propName in componentProps) {
+            if (!Object.prototype.hasOwnProperty.call(componentProps, propName)) continue;
+
             const propValue = componentProps[propName];
 
-            if (propValue instanceof THREE.Color) {
+            if (propValue instanceof Color) {
               serializedProps[propName] = serializeColor(propValue);
             } else {
               serializedProps[propName] = propValue;
@@ -197,25 +224,34 @@ export default function EditorNodeMixin(Object3DClass) {
       const componentProps = {};
 
       for (const key in props) {
+        if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
+
         const value = props[key];
 
-        if (value instanceof THREE.Color) {
+        if (value instanceof Color) {
           componentProps[key] = serializeColor(value);
         } else {
           componentProps[key] = value;
         }
       }
 
-      this.userData.gltfExtensions.MOZ_hubs_components[name] = props;
+      this.userData.gltfExtensions.MOZ_hubs_components[name] = componentProps;
     }
 
     replaceObject(replacementObject) {
-      replacementObject = replacementObject || new THREE.Object3D().copy(this, false);
+      replacementObject = replacementObject || new Object3D().copy(this, false);
 
       replacementObject.uuid = this.uuid;
 
       if (this.userData.gltfExtensions && this.userData.gltfExtensions.MOZ_hubs_components) {
         replacementObject.userData.gltfExtensions.MOZ_hubs_components = this.userData.gltfExtensions.MOZ_hubs_components;
+      }
+
+      for (const child of this.children) {
+        if (child.isNode) {
+          replacementObject.children.push(child);
+          child.parent = replacementObject;
+        }
       }
 
       this.parent.add(replacementObject);
@@ -224,6 +260,10 @@ export default function EditorNodeMixin(Object3DClass) {
 
     gltfIndexForUUID(nodeUUID) {
       return { __gltfIndexForUUID: nodeUUID };
+    }
+
+    getObjectByUUID(uuid) {
+      return this.getObjectByProperty("uuid", uuid);
     }
 
     computeStaticMode() {
@@ -247,12 +287,42 @@ export default function EditorNodeMixin(Object3DClass) {
         this.loadingCube = new LoadingCube();
         this.add(this.loadingCube);
       }
+
+      const worldScale = this.getWorldScale(this.loadingCube.scale);
+
+      if (worldScale.x === 0 || worldScale.y === 0 || worldScale.z === 0) {
+        this.loadingCube.scale.set(1, 1, 1);
+      } else {
+        this.loadingCube.scale.set(1 / worldScale.x, 1 / worldScale.y, 1 / worldScale.z);
+      }
     }
 
     hideLoadingCube() {
       if (this.loadingCube) {
         this.remove(this.loadingCube);
         this.loadingCube = null;
+      }
+    }
+
+    showErrorIcon() {
+      if (!this.errorIcon) {
+        this.errorIcon = new ErrorIcon();
+        this.add(this.errorIcon);
+      }
+
+      const worldScale = this.getWorldScale(this.errorIcon.scale);
+
+      if (worldScale.x === 0 || worldScale.y === 0 || worldScale.z === 0) {
+        this.errorIcon.scale.set(1, 1, 1);
+      } else {
+        this.errorIcon.scale.set(1 / worldScale.x, 1 / worldScale.y, 1 / worldScale.z);
+      }
+    }
+
+    hideErrorIcon() {
+      if (this.errorIcon) {
+        this.remove(this.errorIcon);
+        this.errorIcon = null;
       }
     }
 
@@ -304,6 +374,11 @@ export default function EditorNodeMixin(Object3DClass) {
       }
 
       return nodes;
+    }
+
+    // Used for calculating stats for the Performance Check Dialog
+    getRuntimeResourcesForStats() {
+      // return { textures: [], materials: [], meshes: [], lights: [] };
     }
   };
 }

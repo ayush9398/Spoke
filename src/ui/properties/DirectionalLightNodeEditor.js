@@ -5,6 +5,7 @@ import InputGroup from "../inputs/InputGroup";
 import ColorInput from "../inputs/ColorInput";
 import NumericInputGroup from "../inputs/NumericInputGroup";
 import LightShadowProperties from "./LightShadowProperties";
+import { Bolt } from "styled-icons/fa-solid/Bolt";
 
 export default class DirectionalLightNodeEditor extends Component {
   static propTypes = {
@@ -12,16 +13,16 @@ export default class DirectionalLightNodeEditor extends Component {
     node: PropTypes.object
   };
 
-  static iconClassName = "fa-bolt";
+  static iconComponent = Bolt;
 
   static description = "A light which illuminates the entire scene, but emits along a single direction.";
 
   onChangeColor = color => {
-    this.props.editor.setNodeProperty(this.props.node, "color", color);
+    this.props.editor.setPropertySelected("color", color);
   };
 
   onChangeIntensity = intensity => {
-    this.props.editor.setNodeProperty(this.props.node, "intensity", intensity);
+    this.props.editor.setPropertySelected("intensity", intensity);
   };
 
   render() {
@@ -35,6 +36,9 @@ export default class DirectionalLightNodeEditor extends Component {
         <NumericInputGroup
           name="Intensity"
           min={0}
+          smallStep={0.001}
+          mediumStep={0.01}
+          largeStep={0.1}
           value={node.intensity}
           onChange={this.onChangeIntensity}
           unit="cd"

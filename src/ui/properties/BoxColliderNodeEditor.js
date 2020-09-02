@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import NodeEditor from "./NodeEditor";
 import InputGroup from "../inputs/InputGroup";
 import BooleanInput from "../inputs/BooleanInput";
+import { HandPaper } from "styled-icons/fa-solid/HandPaper";
 
 export default class BoxColliderNodeEditor extends Component {
   static propTypes = {
@@ -10,13 +11,13 @@ export default class BoxColliderNodeEditor extends Component {
     node: PropTypes.object
   };
 
-  static iconClassName = "fa-hand-paper";
+  static iconComponent = HandPaper;
 
   static description =
     "An invisible box that objects will bounce off of or rest on top of.\nWithout colliders, objects will fall through floors and go through walls.";
 
   onChangeWalkable = walkable => {
-    this.props.editor.setNodeProperty(this.props.node, "walkable", walkable);
+    this.props.editor.setPropertySelected("walkable", walkable);
   };
 
   render() {

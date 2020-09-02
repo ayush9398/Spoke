@@ -17,8 +17,6 @@ const HTMLWebpackPlugin = require("html-webpack-plugin");
 const path = require("path");
 const webpack = require("webpack");
 const TerserJSPlugin = require("terser-webpack-plugin");
-const MiniCssExtractPlugin = require("mini-css-extract-plugin");
-const OptimizeCSSAssetsPlugin = require("optimize-css-assets-webpack-plugin");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const BundleAnalyzerPlugin = require("webpack-bundle-analyzer").BundleAnalyzerPlugin;
 
@@ -137,6 +135,28 @@ module.exports = env => {
           }
         },
         {
+          test: /\.(gltf)(\?.*$|$)/,
+          use: {
+            loader: "gltf-webpack-loader",
+            options: {
+              name: "[name]-[hash].[ext]",
+              outputPath: "assets/models"
+            }
+          }
+        },
+        {
+          test: /\.(bin)$/,
+          use: [
+            {
+              loader: "file-loader",
+              options: {
+                name: "[name]-[hash].[ext]",
+                outputPath: "assets/models"
+              }
+            }
+          ]
+        },
+        {
           test: /\.(mp4|webm)(\?.*$|$)/,
           use: {
             loader: "file-loader",
@@ -155,25 +175,6 @@ module.exports = env => {
               outputPath: "assets/templates"
             }
           }
-        },
-        {
-          test: /\.css$/,
-          use: [process.env.NODE_ENV !== "production" ? "style-loader" : MiniCssExtractPlugin.loader, "css-loader"]
-        },
-        {
-          test: /\.scss$/,
-          include: path.join(__dirname, "src"),
-          use: [
-            process.env.NODE_ENV !== "production" ? "style-loader" : MiniCssExtractPlugin.loader,
-            "css-loader",
-            {
-              loader: "sass-loader",
-              options: {
-                implementation: require("sass"),
-                fiber: require("fibers")
-              }
-            }
-          ]
         },
         {
           test: /\.js$/,
@@ -215,25 +216,8 @@ module.exports = env => {
       process: false
     },
 
-    resolve: {
-      alias: {
-        three$: path.join(__dirname, "node_modules/three/build/three.module.js")
-      }
-    },
-
     optimization: {
-      minimizer: [
-        new TerserJSPlugin({ sourceMap: true, parallel: true, cache: path.join(__dirname, ".tersercache") }),
-        new OptimizeCSSAssetsPlugin({
-          cssProcessorOptions: {
-            sourcemap: true,
-            map: {
-              inline: false,
-              annotation: true
-            }
-          }
-        })
-      ]
+      minimizer: [new TerserJSPlugin({ sourceMap: true, parallel: true, cache: path.join(__dirname, ".tersercache") })]
     },
 
     plugins: [
@@ -242,32 +226,47 @@ module.exports = env => {
       }),
       new CopyWebpackPlugin([
         {
+          from: path.join(
+            __dirname,
+            "src",
+            "assets",
+            process.env.IS_MOZ === "true" ? "favicon-spoke.ico" : "favicon-editor.ico"
+          ),
+          to: "assets/images/favicon.ico"
+        }
+      ]),
+      new CopyWebpackPlugin([
+        {
           from: path.join(__dirname, "src", "assets", "favicon-spoke.ico"),
           to: "assets/images/favicon-spoke.ico"
         }
       ]),
+      new CopyWebpackPlugin([
+        {
+          from: path.join(__dirname, "src", "assets", "favicon-editor.ico"),
+          to: "assets/images/favicon-editor.ico"
+        }
+      ]),
       new HTMLWebpackPlugin({
         template: path.join(__dirname, "src", "index.html"),
-        faviconPath: (process.env.BASE_ASSETS_PATH || "/") + "assets/images/favicon-spoke.ico"
+        faviconPath: (process.env.BASE_ASSETS_PATH || "/") + "assets/images/favicon.ico"
       }),
       new webpack.EnvironmentPlugin({
         BUILD_VERSION: "dev",
         NODE_ENV: "development",
         RETICULUM_SERVER: undefined,
-        FARSPARK_SERVER: undefined,
+        THUMBNAIL_SERVER: "",
         HUBS_SERVER: undefined,
         CORS_PROXY_SERVER: null,
         BASE_ASSETS_PATH: "",
         NON_CORS_PROXY_DOMAINS: "",
         ROUTER_BASE_PATH: "",
-        SENTRY_DSN: null
-      }),
-      new webpack.IgnorePlugin({
-        resourceRegExp: /^@blueprintjs\/core/
-      }),
-      new MiniCssExtractPlugin({
-        filename: "assets/styles/[name]-[contenthash].css",
-        chunkFilename: "assets/styles/[name]-[contenthash].css"
+        SENTRY_DSN: null,
+        GA_TRACKING_ID: null,
+        IS_MOZ: false,
+        GITHUB_ORG: "mozilla",
+        GITHUB_REPO: "spoke",
+        GITHUB_PUBLIC_TOKEN: "de8cbfb4cc0281c7b731c891df431016c29b0ace"
       })
     ]
   };

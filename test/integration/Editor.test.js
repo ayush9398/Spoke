@@ -2,7 +2,7 @@ import test from "ava";
 import withPage from "../helpers/withPage";
 import getFixtureUrl from "../helpers/getFixtureUrl";
 
-async function waitForSceneLoaded(page) {
+async function waitForProjectLoaded(page) {
   await page.waitFor("#editor-container", { timeout: 10000 });
 
   const windowHandle = await page.evaluateHandle("window");
@@ -10,8 +10,28 @@ async function waitForSceneLoaded(page) {
   return await page.evaluateHandle(async window => {
     const editor = window.editor;
 
-    if (!editor.sceneLoaded) {
-      await new Promise(resolve => editor.signals.sceneSet.add(resolve));
+    if (!editor.projectLoaded) {
+      await new Promise((resolve, reject) => {
+        let cleanup = null;
+
+        const onProjectLoaded = () => {
+          cleanup();
+          resolve();
+        };
+
+        const onError = error => {
+          cleanup();
+          reject(error);
+        };
+
+        cleanup = () => {
+          editor.removeListener("projectLoaded", onProjectLoaded);
+          editor.removeListener("error", onError);
+        };
+
+        editor.addListener("projectLoaded", onProjectLoaded);
+        editor.addListener("error", onError);
+      });
     }
 
     return editor.scene;
@@ -24,7 +44,7 @@ async function getSerializedScene(page, sceneHandle) {
 }
 
 test("Editor should load new scene", withPage("/projects/new"), async (t, page) => {
-  const sceneHandle = await waitForSceneLoaded(page);
+  const sceneHandle = await waitForProjectLoaded(page);
   const serializedScene = await getSerializedScene(page, sceneHandle);
   t.snapshot(serializedScene);
 });
@@ -32,7 +52,7 @@ test("Editor should load new scene", withPage("/projects/new"), async (t, page) 
 const v1TestSceneUrl = getFixtureUrl("V1TestScene.spoke");
 
 test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1TestSceneUrl}`), async (t, page) => {
-  const sceneHandle = await waitForSceneLoaded(page);
+  const sceneHandle = await waitForProjectLoaded(page);
   const serializedScene = await getSerializedScene(page, sceneHandle);
 
   const entities = Object.values(serializedScene.entities);
@@ -97,7 +117,7 @@ test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1Test
   const model1Entity = entities.find(e => e.name === "Model1");
   t.is(model1Entity.index, 5);
   const model1Props = model1Entity.components.find(c => c.name === "gltf-model").props;
-  t.is(model1Props.src, "https://asset-bundles-prod.reticulum.io/interactables/Ducky/DuckyMesh-438ff8e022.gltf");
+  t.is(model1Props.src, "https://hubs.local:9090/test-assets/duck.glb");
   t.truthy(model1Entity.components.find(c => c.name === "walkable"));
   t.truthy(model1Entity.components.find(c => c.name === "collidable"));
   t.deepEqual(model1Props.attribution, null);
@@ -109,7 +129,7 @@ test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1Test
   const model2Entity = entities.find(e => e.name === "Ceiling Fan");
   t.is(model2Entity.index, 6);
   const model2Props = model2Entity.components.find(c => c.name === "gltf-model").props;
-  t.is(model2Props.src, "https://sketchfab.com/models/ec2c6087d4824211abc827f2a4c2b578");
+  t.is(model2Props.src, "https://hubs.local:9090/test-assets/ceiling-fan.glb");
   t.falsy(model2Entity.components.find(c => c.name === "walkable"));
   t.falsy(model2Entity.components.find(c => c.name === "collidable"));
   t.deepEqual(model2Props.attribution, {
@@ -121,7 +141,7 @@ test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1Test
   t.is(shadow2Props.cast, false);
   t.is(shadow2Props.receive, false);
   const loopAnimation2Props = model2Entity.components.find(c => c.name === "loop-animation").props;
-  t.is(loopAnimation2Props.clip, "Take 001");
+  t.is(loopAnimation2Props.activeClipIndex, 0);
 
   const groupNode1Entity = entities.find(e => e.name === "Group");
   const groupNode1EntityIndex = entities.findIndex(e => e.name === "Group");
@@ -143,7 +163,7 @@ test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1Test
   const spawnerEntity = entities.find(e => e.name === "Spawner1");
   t.is(spawnerEntity.index, 10);
   const spawnerProps = spawnerEntity.components.find(c => c.name === "spawner").props;
-  t.is(spawnerProps.src, "https://sketchfab.com/models/2a09a3dc75364c8c84b25d2cc235cb9b");
+  t.is(spawnerProps.src, "https://hubs.local:9090/test-assets/camera.glb");
 
   const spotLightEntity = entities.find(e => e.name === "Spot Light1");
   t.is(spotLightEntity.index, 11);
@@ -171,25 +191,19 @@ test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1Test
   const image1Entity = entities.find(e => e.name === "Image");
   t.is(image1Entity.index, 13);
   const image1Props = image1Entity.components.find(c => c.name === "image").props;
-  t.is(
-    image1Props.src,
-    "https://assets-prod.reticulum.io/assets/images/hub-preview-light-no-shadow-5ebb166e8580d819b445892173ec0286.png"
-  );
+  t.is(image1Props.src, "https://hubs.local:9090/test-assets/spoke-logo.png");
   t.is(image1Props.projection, "flat");
 
   const image2Entity = entities.find(e => e.name === "Image 1");
   t.is(image2Entity.index, 16);
   const image2Props = image2Entity.components.find(c => c.name === "image").props;
-  t.is(
-    image2Props.src,
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/SonyCenter_360panorama.jpg/2880px-SonyCenter_360panorama.jpg"
-  );
+  t.is(image2Props.src, "https://hubs.local:9090/test-assets/spoke-logo.png");
   t.is(image2Props.projection, "360-equirectangular");
 
   const video1Entity = entities.find(e => e.name === "Video");
   t.is(video1Entity.index, 14);
   const video1Props = video1Entity.components.find(c => c.name === "video").props;
-  t.is(video1Props.src, "https://www.youtube.com/watch?v=WmQKZJPhV7s");
+  t.is(video1Props.src, "https://hubs.local:9090/test-assets/landing-video.webm");
   t.is(video1Props.projection, "flat");
   t.is(video1Props.controls, false);
   t.is(video1Props.autoPlay, true);
@@ -207,7 +221,7 @@ test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1Test
   const video2Entity = entities.find(e => e.name === "Video 1");
   t.is(video2Entity.index, 15);
   const video2Props = video2Entity.components.find(c => c.name === "video").props;
-  t.is(video2Props.src, "https://www.youtube.com/watch?v=H6SsB3JYqQg");
+  t.is(video2Props.src, "https://hubs.local:9090/test-assets/landing-video.webm");
   t.is(video2Props.projection, "360-equirectangular");
   t.is(video2Props.controls, true);
   t.is(video2Props.autoPlay, true);
@@ -234,7 +248,15 @@ test("Editor should load V1TestScene", withPage(`/projects/new?template=${v1Test
 const v3TestSceneUrl = getFixtureUrl("V3TestScene.spoke");
 
 test("Editor should load V3TestScene", withPage(`/projects/new?template=${v3TestSceneUrl}`), async (t, page) => {
-  const sceneHandle = await waitForSceneLoaded(page);
+  const sceneHandle = await waitForProjectLoaded(page);
+  const serializedScene = await getSerializedScene(page, sceneHandle);
+  t.snapshot(serializedScene);
+});
+
+const v4TestSceneUrl = getFixtureUrl("V4TestScene.spoke");
+
+test("Editor should load V4TestScene", withPage(`/projects/new?template=${v4TestSceneUrl}`), async (t, page) => {
+  const sceneHandle = await waitForProjectLoaded(page);
   const serializedScene = await getSerializedScene(page, sceneHandle);
   t.snapshot(serializedScene);
 });

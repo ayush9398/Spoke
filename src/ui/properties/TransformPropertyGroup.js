@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import { Vector3 } from "three";
 import PropTypes from "prop-types";
 import PropertyGroup from "./PropertyGroup";
 import InputGroup from "../inputs/InputGroup";
@@ -13,6 +14,7 @@ export default class TransformPropertyGroup extends Component {
 
   constructor(props) {
     super(props);
+    this.translation = new Vector3();
   }
 
   shouldComponentUpdate(nextProps) {
@@ -20,35 +22,40 @@ export default class TransformPropertyGroup extends Component {
   }
 
   componentDidMount() {
-    this.props.editor.signals.propertyChanged.add(this.onPropertyChanged);
-    this.props.editor.signals.objectChanged.add(this.onObjectChanged);
+    this.props.editor.addListener("objectsChanged", this.onObjectsChanged);
   }
 
   componentWillUnmount() {
-    this.props.editor.signals.propertyChanged.remove(this.onPropertyChanged);
-    this.props.editor.signals.objectChanged.remove(this.onObjectChanged);
+    this.props.editor.removeListener("objectsChanged", this.onObjectsChanged);
   }
 
-  onPropertyChanged = (property, object) => {
-    if (object === this.props.node && (property === "position" || property === "rotation" || property === "scale")) {
-      this.forceUpdate();
+  onObjectsChanged = (objects, property) => {
+    for (let i = 0; i < objects.length; i++) {
+      if (
+        objects[i] === this.props.node &&
+        (property === "position" ||
+          property === "rotation" ||
+          property === "scale" ||
+          property === "matrix" ||
+          property == null)
+      ) {
+        this.forceUpdate();
+        return;
+      }
     }
   };
 
-  onObjectChanged = () => {
-    this.forceUpdate();
-  };
-
   onChangePosition = value => {
-    this.props.editor.setNodeProperty(this.props.node, "position", value);
+    this.translation.subVectors(value, this.props.node.position);
+    this.props.editor.translateSelected(this.translation);
   };
 
   onChangeRotation = value => {
-    this.props.editor.setNodeProperty(this.props.node, "rotation", value);
+    this.props.editor.setRotationSelected(value);
   };
 
   onChangeScale = value => {
-    this.props.editor.setNodeProperty(this.props.node, "scale", value);
+    this.props.editor.setScaleSelected(value);
   };
 
   render() {
@@ -57,13 +64,26 @@ export default class TransformPropertyGroup extends Component {
     return (
       <PropertyGroup name="Transform">
         <InputGroup name="Position">
-          <Vector3Input value={node.position} onChange={this.onChangePosition} />
+          <Vector3Input
+            value={node.position}
+            smallStep={0.01}
+            mediumStep={0.1}
+            largeStep={1}
+            onChange={this.onChangePosition}
+          />
         </InputGroup>
         <InputGroup name="Rotation">
           <EulerInput value={node.rotation} onChange={this.onChangeRotation} unit="°" />
         </InputGroup>
         <InputGroup name="Scale">
-          <Vector3Input uniformScaling value={node.scale} onChange={this.onChangeScale} />
+          <Vector3Input
+            uniformScaling
+            smallStep={0.01}
+            mediumStep={0.1}
+            largeStep={1}
+            value={node.scale}
+            onChange={this.onChangeScale}
+          />
         </InputGroup>
       </PropertyGroup>
     );

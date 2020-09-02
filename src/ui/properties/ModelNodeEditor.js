@@ -5,58 +5,69 @@ import SelectInput from "../inputs/SelectInput";
 import InputGroup from "../inputs/InputGroup";
 import BooleanInput from "../inputs/BooleanInput";
 import ModelInput from "../inputs/ModelInput";
+import { Cube } from "styled-icons/fa-solid/Cube";
+import { GLTFInfo } from "../inputs/GLTFInfo";
 
 export default class ModelNodeEditor extends Component {
   static propTypes = {
     editor: PropTypes.object,
-    node: PropTypes.object
+    node: PropTypes.object,
+    multiEdit: PropTypes.bool
   };
 
-  static iconClassName = "fa-cube";
+  static iconComponent = Cube;
 
   static description = "A 3D model in your scene, loaded from a GLTF URL or file.";
 
-  onChangeSrc = (src, { scaleToFit }) => {
-    if (scaleToFit) {
-      this.props.node.scaleToFit = scaleToFit;
-    }
-
-    this.props.editor.setNodeProperty(this.props.node, "src", src);
+  onChangeSrc = (src, initialProps) => {
+    this.props.editor.setPropertiesSelected({ ...initialProps, src });
   };
 
-  onChangeAnimation = activeClipName => {
-    this.props.editor.setNodeProperty(this.props.node, "activeClipName", activeClipName);
+  onChangeAnimation = activeClipIndex => {
+    this.props.editor.setPropertySelected("activeClipIndex", activeClipIndex);
   };
 
   onChangeCollidable = collidable => {
-    this.props.editor.setNodeProperty(this.props.node, "collidable", collidable);
+    this.props.editor.setPropertySelected("collidable", collidable);
   };
 
   onChangeWalkable = walkable => {
-    this.props.editor.setNodeProperty(this.props.node, "walkable", walkable);
+    this.props.editor.setPropertySelected("walkable", walkable);
   };
 
   onChangeCastShadow = castShadow => {
-    this.props.editor.setNodeProperty(this.props.node, "castShadow", castShadow);
+    this.props.editor.setPropertySelected("castShadow", castShadow);
   };
 
   onChangeReceiveShadow = receiveShadow => {
-    this.props.editor.setNodeProperty(this.props.node, "receiveShadow", receiveShadow);
+    this.props.editor.setPropertySelected("receiveShadow", receiveShadow);
   };
+
+  isAnimationPropertyDisabled() {
+    const { multiEdit, editor, node } = this.props;
+
+    if (multiEdit) {
+      return editor.selected.some(selectedNode => selectedNode.src !== node.src);
+    }
+
+    return false;
+  }
 
   render() {
     const node = this.props.node;
-    const activeClipName = node.activeClipName;
-    const clipOptions = node.getClipNames().map(name => ({ label: name, value: name }));
-    clipOptions.unshift({ label: "None", value: null });
 
     return (
       <NodeEditor description={ModelNodeEditor.description} {...this.props}>
-        <InputGroup name="Model">
+        <InputGroup name="Model Url">
           <ModelInput value={node.src} onChange={this.onChangeSrc} />
         </InputGroup>
         <InputGroup name="Loop Animation">
-          <SelectInput options={clipOptions} value={activeClipName} onChange={this.onChangeAnimation} />
+          <SelectInput
+            disabled={this.isAnimationPropertyDisabled()}
+            options={node.getClipOptions()}
+            value={node.activeClipIndex}
+            onChange={this.onChangeAnimation}
+          />
         </InputGroup>
         <InputGroup name="Collidable">
           <BooleanInput value={node.collidable} onChange={this.onChangeCollidable} />
@@ -70,6 +81,7 @@ export default class ModelNodeEditor extends Component {
         <InputGroup name="Receive Shadow">
           <BooleanInput value={node.receiveShadow} onChange={this.onChangeReceiveShadow} />
         </InputGroup>
+        {node.model && <GLTFInfo node={node} />}
       </NodeEditor>
     );
   }

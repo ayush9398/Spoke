@@ -5,10 +5,13 @@
       "@babel/preset-env",
       {
         "targets": [
-          ">0.25%",
+          ">2%",
           "not ie 11",
           "not op_mini all"
-        ]
+        ],
+        "modules": false,
+        "useBuiltIns": "usage",
+        "corejs": 3
       }
     ]
   ],
@@ -16,6 +19,7 @@
     "@babel/plugin-proposal-class-properties",
     "@babel/plugin-proposal-object-rest-spread",
     "@babel/plugin-syntax-dynamic-import",
-    "@babel/plugin-transform-runtime"
+    "@babel/plugin-transform-runtime",
+    "babel-plugin-styled-components"
   ]
 }

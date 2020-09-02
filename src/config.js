@@ -22,6 +22,8 @@ import HemisphereLightNode from "./editor/nodes/HemisphereLightNode";
 import HemisphereLightNodeEditor from "./ui/properties/HemisphereLightNodeEditor";
 import SpawnPointNode from "./editor/nodes/SpawnPointNode";
 import SpawnPointNodeEditor from "./ui/properties/SpawnPointNodeEditor";
+import WayPointNode from "./editor/nodes/WayPointNode";
+import WayPointNodeEditor from "./ui/properties/WayPointNodeEditor";
 import SkyboxNode from "./editor/nodes/SkyboxNode";
 import SkyboxNodeEditor from "./ui/properties/SkyboxNodeEditor";
 import FloorPlanNode from "./editor/nodes/FloorPlanNode";
@@ -36,9 +38,31 @@ import TriggerVolumeNode from "./editor/nodes/TriggerVolumeNode";
 import TriggerVolumeNodeEditor from "./ui/properties/TriggerVolumeNodeEditor";
 import LinkNode from "./editor/nodes/LinkNode";
 import LinkNodeEditor from "./ui/properties/LinkNodeEditor";
+import ParticleEmitterNode from "./editor/nodes/ParticleEmitterNode";
+import ParticleEmitterNodeEditor from "./ui/properties/ParticleEmitterNodeEditor";
+import KitPieceNode from "./editor/nodes/KitPieceNode";
+import KitPieceNodeEditor from "./ui/properties/KitPieceNodeEditor";
+import SimpleWaterNode from "./editor/nodes/SimpleWaterNode";
+import SimpleWaterNodeEditor from "./ui/properties/SimpleWaterNodeEditor";
+import AudioNode from "./editor/nodes/AudioNode";
+import AudioNodeEditor from "./ui/properties/AudioNodeEditor";
+import ScenePreviewCameraNode from "./editor/nodes/ScenePreviewCameraNode";
+import ScenePreviewCameraNodeEditor from "./ui/properties/ScenePreviewCameraNodeEditor";
 
-export function createEditor(api) {
-  const editor = new Editor(api);
+import SketchfabSource from "./ui/assets/sources/SketchfabSource";
+import PolySource from "./ui/assets/sources/PolySource";
+import BingImagesSource from "./ui/assets/sources/BingImagesSource";
+import BingVideosSource from "./ui/assets/sources/BingVideosSource";
+import TenorSource from "./ui/assets/sources/TenorSource";
+import ElementsSource from "./ui/assets/sources/ElementsSource";
+import MyAssetsSource from "./ui/assets/sources/MyAssetsSource";
+import ArchitectureKitSource from "./ui/assets/sources/ArchitectureKitSource";
+import RockKitSource from "./ui/assets/sources/RockKitSource";
+import HubsSoundPackSource from "./ui/assets/sources/HubsSoundPackSource";
+
+export function createEditor(api, settings) {
+  const editor = new Editor(api, settings);
+
   editor.registerNode(SceneNode, SceneNodeEditor);
   editor.registerNode(GroupNode, GroupNodeEditor);
   editor.registerNode(ModelNode, ModelNodeEditor);
@@ -50,12 +74,30 @@ export function createEditor(api) {
   editor.registerNode(SpotLightNode, SpotLightNodeEditor);
   editor.registerNode(PointLightNode, PointLightNodeEditor);
   editor.registerNode(SpawnPointNode, SpawnPointNodeEditor);
+  editor.registerNode(WayPointNode, WayPointNodeEditor);
   editor.registerNode(SkyboxNode, SkyboxNodeEditor);
   editor.registerNode(FloorPlanNode, FloorPlanNodeEditor);
   editor.registerNode(ImageNode, ImageNodeEditor);
   editor.registerNode(VideoNode, VideoNodeEditor);
+  editor.registerNode(AudioNode, AudioNodeEditor);
   editor.registerNode(SpawnerNode, SpawnerNodeEditor);
   editor.registerNode(TriggerVolumeNode, TriggerVolumeNodeEditor);
   editor.registerNode(LinkNode, LinkNodeEditor);
+  editor.registerNode(ParticleEmitterNode, ParticleEmitterNodeEditor);
+  editor.registerNode(KitPieceNode, KitPieceNodeEditor);
+  editor.registerNode(SimpleWaterNode, SimpleWaterNodeEditor);
+  editor.registerNode(ScenePreviewCameraNode, ScenePreviewCameraNodeEditor);
+
+  editor.registerSource(new ElementsSource(editor));
+  editor.registerSource(new MyAssetsSource(editor));
+  editor.registerSource(new ArchitectureKitSource(api));
+  editor.registerSource(new RockKitSource(api));
+  editor.registerSource(new SketchfabSource(api));
+  editor.registerSource(new PolySource(api));
+  editor.registerSource(new BingImagesSource(api));
+  editor.registerSource(new BingVideosSource(api));
+  editor.registerSource(new HubsSoundPackSource(editor));
+  editor.registerSource(new TenorSource(api));
+
   return editor;
 }

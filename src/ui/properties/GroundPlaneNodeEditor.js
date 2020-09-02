@@ -4,6 +4,7 @@ import NodeEditor from "./NodeEditor";
 import InputGroup from "../inputs/InputGroup";
 import ColorInput from "../inputs/ColorInput";
 import BooleanInput from "../inputs/BooleanInput";
+import { SquareFull } from "styled-icons/fa-solid/SquareFull";
 
 export default class GroundPlaneNodeEditor extends Component {
   static propTypes = {
@@ -11,20 +12,20 @@ export default class GroundPlaneNodeEditor extends Component {
     node: PropTypes.object
   };
 
-  static iconClassName = "fa-square-full";
+  static iconComponent = SquareFull;
 
   static description = "A flat ground plane that extends into the distance.";
 
   onChangeColor = color => {
-    this.props.editor.setNodeProperty(this.props.node, "color", color);
+    this.props.editor.setPropertySelected("color", color);
   };
 
   onChangeReceiveShadow = receiveShadow => {
-    this.props.editor.setNodeProperty(this.props.node, "receiveShadow", receiveShadow);
+    this.props.editor.setPropertySelected("receiveShadow", receiveShadow);
   };
 
   onChangeWalkable = walkable => {
-    this.props.editor.setNodeProperty(this.props.node, "walkable", walkable);
+    this.props.editor.setPropertySelected("walkable", walkable);
   };
 
   render() {

@@ -1,6 +1,23 @@
-import THREE from "../../vendor/three";
+import { Box3, Sphere } from "three";
 import Model from "../objects/Model";
 import EditorNodeMixin from "./EditorNodeMixin";
+import cloneObject3D from "../utils/cloneObject3D";
+import { RethrownError } from "../utils/errors";
+import { collectUniqueMaterials } from "../utils/materials";
+import { getObjectPerfIssues, maybeAddLargeFileIssue } from "../utils/performance";
+
+const defaultStats = {
+  nodes: 0,
+  meshes: 0,
+  materials: 0,
+  textures: 0,
+  polygons: 0,
+  vertices: 0,
+  jsonSize: 0,
+  bufferInfo: {},
+  textureInfo: {},
+  meshInfo: {}
+};
 
 export default class SpawnerNode extends EditorNodeMixin(Model) {
   static legacyComponentName = "spawner";
@@ -8,16 +25,16 @@ export default class SpawnerNode extends EditorNodeMixin(Model) {
   static nodeName = "Spawner";
 
   static initialElementProps = {
-    scaleToFit: true,
+    initialScale: "fit",
     src: "https://sketchfab.com/models/a4c500d7358a4a199b6a5cd35f416466"
   };
 
-  static async deserialize(editor, json, loadAsync) {
+  static async deserialize(editor, json, loadAsync, onError) {
     const node = await super.deserialize(editor, json);
 
     const { src } = json.components.find(c => c.name === "spawner").props;
 
-    loadAsync(node.load(src));
+    loadAsync(node.load(src, onError));
 
     return node;
   }
@@ -25,9 +42,11 @@ export default class SpawnerNode extends EditorNodeMixin(Model) {
   constructor(editor) {
     super(editor);
     this._canonicalUrl = "";
-    this.scaleToFit = false;
-    this.boundingBox = new THREE.Box3();
-    this.boundingSphere = new THREE.Sphere();
+    this.initialScale = 1;
+    this.boundingBox = new Box3();
+    this.boundingSphere = new Sphere();
+    this.stats = defaultStats;
+    this.gltfJson = null;
   }
 
   // Overrides Model's src property and stores the original (non-resolved) url.
@@ -42,37 +61,77 @@ export default class SpawnerNode extends EditorNodeMixin(Model) {
 
   // Overrides Model's loadGLTF method and uses the Editor's gltf cache.
   async loadGLTF(src) {
-    return await this.editor.gltfCache.get(src);
+    const loader = this.editor.gltfCache.getLoader(src);
+
+    const { scene, json, stats } = await loader.getDependency("gltf");
+
+    this.stats = stats;
+    this.gltfJson = json;
+
+    return cloneObject3D(scene);
   }
 
   // Overrides Model's load method and resolves the src url before loading.
-  async load(src) {
+  async load(src, onError) {
     const nextSrc = src || "";
 
-    if (nextSrc === this._canonicalUrl) {
+    if (nextSrc === this._canonicalUrl && nextSrc !== "") {
       return;
     }
 
     this._canonicalUrl = nextSrc;
 
+    this.stats = defaultStats;
+    this.gltfJson = null;
+    this.issues = [];
+
     if (this.model) {
       this.remove(this.model);
+      this.editor.renderer.removeBatchedObject(this.model);
       this.model = null;
     }
 
-    if (this.errorMesh) {
-      this.remove(this.errorMesh);
-      this.errorMesh = null;
-    }
-
+    this.hideErrorIcon();
     this.showLoadingCube();
 
     try {
       const { accessibleUrl, files } = await this.editor.api.resolveMedia(src);
 
+      if (this.model) {
+        this.editor.renderer.removeBatchedObject(this.model);
+      }
+
       await super.load(accessibleUrl);
 
-      if (this.scaleToFit) {
+      if (this.stats) {
+        const textureInfo = this.stats.textureInfo;
+        for (const key in textureInfo) {
+          if (!Object.prototype.hasOwnProperty.call(textureInfo, key)) continue;
+          const info = textureInfo[key];
+
+          if (info.size === undefined) {
+            let file;
+
+            for (const name in files) {
+              if (Object.prototype.hasOwnProperty.call(files, name) && files[name].url === info.url) {
+                file = files[name];
+                break;
+              }
+            }
+
+            if (file) {
+              info.size = file.size;
+              this.stats.totalSize += file.size;
+            }
+          }
+        }
+      }
+
+      if (this.model) {
+        this.editor.renderer.addBatchedObject(this.model);
+      }
+
+      if (this.initialScale === "fit") {
         this.scale.set(1, 1, 1);
 
         if (this.model) {
@@ -94,35 +153,63 @@ export default class SpawnerNode extends EditorNodeMixin(Model) {
         }
 
         // Clear scale to fit property so that the swapped model maintains the same scale.
-        this.scaleToFit = false;
+        this.initialScale = 1;
+      } else {
+        this.scale.multiplyScalar(this.initialScale);
+        this.initialScale = 1;
       }
 
-      this.editor.signals.objectChanged.dispatch(this);
+      if (this.model) {
+        this.model.traverse(object => {
+          if (object.material && object.material.isMeshStandardMaterial) {
+            object.material.envMap = this.editor.scene.environmentMap;
+            object.material.needsUpdate = true;
+          }
+        });
+
+        this.issues = getObjectPerfIssues(this.model);
+        maybeAddLargeFileIssue("gltf", this.stats.totalSize, this.issues);
+      }
 
       if (files) {
         // Revoke any object urls from the SketchfabZipLoader.
         for (const key in files) {
-          URL.revokeObjectURL(files[key]);
+          if (Object.prototype.hasOwnProperty.call(files, key)) {
+            URL.revokeObjectURL(files[key].url);
+          }
         }
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      this.showErrorIcon();
+
+      const spawnerError = new RethrownError(`Error loading spawner model "${this._canonicalUrl}"`, error);
+
+      if (onError) {
+        onError(this, spawnerError);
+      }
+
+      console.error(spawnerError);
+
+      this.issues.push({ severity: "error", message: "Error loading model." });
     }
 
+    this.editor.emit("objectsChanged", [this]);
+    this.editor.emit("selectionChanged");
     this.hideLoadingCube();
 
-    if (!this.model) {
-      return this;
-    }
-
-    this.model.traverse(object => {
-      if (object.material && object.material.isMeshStandardMaterial) {
-        object.material.envMap = this.editor.scene.environmentMap;
-        object.material.needsUpdate = true;
-      }
-    });
-
     return this;
+  }
+
+  onAdd() {
+    if (this.model) {
+      this.editor.renderer.addBatchedObject(this.model);
+    }
+  }
+
+  onRemove() {
+    if (this.model) {
+      this.editor.renderer.removeBatchedObject(this.model);
+    }
   }
 
   serialize() {
@@ -133,9 +220,18 @@ export default class SpawnerNode extends EditorNodeMixin(Model) {
     });
   }
 
-  copy(source, recursive) {
+  copy(source, recursive = true) {
     super.copy(source, recursive);
-    this._canonicalUrl = source._canonicalUrl;
+
+    if (source.loadingCube) {
+      this.initialScale = source.initialScale;
+      this.load(source.src);
+    } else {
+      this.stats = JSON.parse(JSON.stringify(source.stats));
+      this.gltfJson = source.gltfJson;
+      this._canonicalUrl = source._canonicalUrl;
+    }
+
     return this;
   }
 
@@ -145,5 +241,21 @@ export default class SpawnerNode extends EditorNodeMixin(Model) {
       src: this._canonicalUrl
     });
     this.replaceObject();
+  }
+
+  getRuntimeResourcesForStats() {
+    if (this.model) {
+      const meshes = [];
+
+      this.model.traverse(object => {
+        if (object.isMesh) {
+          meshes.push(object);
+        }
+      });
+
+      const materials = collectUniqueMaterials(this.model);
+
+      return { meshes, materials };
+    }
   }
 }

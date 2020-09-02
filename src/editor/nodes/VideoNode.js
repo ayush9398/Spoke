@@ -3,6 +3,8 @@ import Video from "../objects/Video";
 import Hls from "hls.js/dist/hls.light";
 import isHLS from "../utils/isHLS";
 import spokeLandingVideo from "../../assets/video/SpokePromo.mp4";
+import { RethrownError } from "../utils/errors";
+import { getObjectPerfIssues } from "../utils/performance";
 
 export default class VideoNode extends EditorNodeMixin(Video) {
   static legacyComponentName = "video";
@@ -13,7 +15,7 @@ export default class VideoNode extends EditorNodeMixin(Video) {
     src: new URL(spokeLandingVideo, location).href
   };
 
-  static async deserialize(editor, json, loadAsync) {
+  static async deserialize(editor, json, loadAsync, onError) {
     const node = await super.deserialize(editor, json);
 
     const {
@@ -35,8 +37,8 @@ export default class VideoNode extends EditorNodeMixin(Video) {
 
     loadAsync(
       (async () => {
-        await node.load(src);
-        node.controls = controls;
+        await node.load(src, onError);
+        node.controls = controls || false;
         node.autoPlay = autoPlay;
         node.loop = loop;
         node.audioType = audioType;
@@ -61,14 +63,11 @@ export default class VideoNode extends EditorNodeMixin(Video) {
     this._canonicalUrl = "";
     this._autoPlay = true;
     this.volume = 0.5;
+    this.controls = true;
   }
 
   get src() {
     return this._canonicalUrl;
-  }
-
-  set src(value) {
-    this.load(value).catch(console.error);
   }
 
   get autoPlay() {
@@ -79,21 +78,27 @@ export default class VideoNode extends EditorNodeMixin(Video) {
     this._autoPlay = value;
   }
 
-  async load(src) {
+  set src(value) {
+    this.load(value).catch(console.error);
+  }
+
+  async load(src, onError) {
     const nextSrc = src || "";
 
-    if (nextSrc === this._canonicalUrl) {
+    if (nextSrc === this._canonicalUrl && nextSrc !== "") {
       return;
     }
 
     this._canonicalUrl = src || "";
 
+    this.issues = [];
     this._mesh.visible = false;
 
+    this.hideErrorIcon();
     this.showLoadingCube();
 
     if (this.editor.playing) {
-      this.videoEl.pause();
+      this.el.pause();
     }
 
     try {
@@ -113,17 +118,31 @@ export default class VideoNode extends EditorNodeMixin(Video) {
 
       if (isHls && this.hls) {
         this.hls.stopLoad();
-      } else if (this.videoEl.duration) {
-        this.videoEl.currentTime = 1;
+      } else if (this.el.duration) {
+        this.el.currentTime = 1;
       }
 
       if (this.editor.playing && this.autoPlay) {
-        this.videoEl.play();
+        this.el.play();
       }
-    } catch (e) {
-      console.error(e);
+
+      this.issues = getObjectPerfIssues(this._mesh, false);
+    } catch (error) {
+      this.showErrorIcon();
+
+      const videoError = new RethrownError(`Error loading video ${this._canonicalUrl}`, error);
+
+      if (onError) {
+        onError(this, videoError);
+      }
+
+      console.error(videoError);
+
+      this.issues.push({ severity: "error", message: "Error loading video." });
     }
 
+    this.editor.emit("objectsChanged", [this]);
+    this.editor.emit("selectionChanged");
     this.hideLoadingCube();
 
     return this;
@@ -131,13 +150,13 @@ export default class VideoNode extends EditorNodeMixin(Video) {
 
   onPlay() {
     if (this.autoPlay) {
-      this.videoEl.play();
+      this.el.play();
     }
   }
 
   onPause() {
-    this.videoEl.pause();
-    this.videoEl.currentTime = 0;
+    this.el.pause();
+    this.el.currentTime = 0;
   }
 
   onChange() {
@@ -148,9 +167,10 @@ export default class VideoNode extends EditorNodeMixin(Video) {
     return new this.constructor(this.editor, this.audioListener).copy(this, recursive);
   }
 
-  copy(source, recursive) {
+  copy(source, recursive = true) {
     super.copy(source, recursive);
 
+    this.controls = source.controls;
     this._canonicalUrl = source._canonicalUrl;
 
     return this;
@@ -199,5 +219,11 @@ export default class VideoNode extends EditorNodeMixin(Video) {
       id: this.uuid
     });
     this.replaceObject();
+  }
+
+  getRuntimeResourcesForStats() {
+    if (this._texture) {
+      return { textures: [this._texture], meshes: [this._mesh], materials: [this._mesh.material] };
+    }
   }
 }

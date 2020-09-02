@@ -71,3 +71,29 @@ export function toPrecision(value, precision) {
   const p = 1 / precision;
   return Math.round(value * p) / p;
 }
+
+// https://stackoverflow.com/a/26188910
+export function camelPad(str) {
+  return (
+    str
+      // Look for long acronyms and filter out the last letter
+      .replace(/([A-Z]+)([A-Z][a-z])/g, " $1 $2")
+      // Look for lower-case letters followed by upper-case letters
+      .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+      // Look for lower-case letters followed by numbers
+      .replace(/([a-zA-Z])(\d)/g, "$1 $2")
+      .replace(/^./, function(str) {
+        return str.toUpperCase();
+      })
+      // Remove any white space left around the word
+      .trim()
+  );
+}
+
+// https://stackoverflow.com/a/18650828
+export function bytesToSize(bytes) {
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  if (bytes == 0) return "0 Byte";
+  const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+  return Math.round(bytes / Math.pow(1024, i), 2) + " " + sizes[i];
+}

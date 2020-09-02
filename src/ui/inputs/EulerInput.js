@@ -1,11 +1,10 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
-import styles from "./Vector3Input.scss";
 import NumericInput from "./NumericInput";
-import THREE from "../../vendor/three";
-import Scrubber from "./Scrubber";
+import { Math as _Math, Euler } from "three";
+import { Vector3InputContainer, Vector3Scrubber } from "./Vector3Input";
 
-const { RAD2DEG, DEG2RAD } = THREE.Math;
+const { RAD2DEG, DEG2RAD } = _Math;
 
 export default class EulerInput extends Component {
   static propTypes = {
@@ -18,15 +17,15 @@ export default class EulerInput extends Component {
   };
 
   static defaultProps = {
-    value: null,
+    value: new Euler(),
     onChange: () => {},
-    smallStep: 1,
-    mediumStep: 15,
-    largeStep: 30
+    smallStep: 0.1,
+    mediumStep: 1,
+    largeStep: 5
   };
 
   onChange = (x, y, z) => {
-    this.props.onChange(new THREE.Euler(x * DEG2RAD, y * DEG2RAD, z * DEG2RAD));
+    this.props.onChange(new Euler(x * DEG2RAD, y * DEG2RAD, z * DEG2RAD));
   };
 
   render() {
@@ -36,20 +35,20 @@ export default class EulerInput extends Component {
     const vy = value ? (value.y || 0) * RAD2DEG : 0;
     const vz = value ? (value.z || 0) * RAD2DEG : 0;
     return (
-      <div className={styles.inputGroup}>
-        <Scrubber {...rest} tag="div" className={styles.label} value={vx} onChange={x => this.onChange(x, vy, vz)}>
+      <Vector3InputContainer>
+        <Vector3Scrubber {...rest} tag="div" value={vx} onChange={x => this.onChange(x, vy, vz)}>
           X:
-        </Scrubber>
+        </Vector3Scrubber>
         <NumericInput {...rest} value={vx} onChange={x => this.onChange(x, vy, vz)} />
-        <Scrubber {...rest} tag="div" className={styles.label} value={vy} onChange={y => this.onChange(vx, y, vz)}>
+        <Vector3Scrubber {...rest} tag="div" value={vy} onChange={y => this.onChange(vx, y, vz)}>
           Y:
-        </Scrubber>
+        </Vector3Scrubber>
         <NumericInput {...rest} value={vy} onChange={y => this.onChange(vx, y, vz)} />
-        <Scrubber {...rest} tag="div" className={styles.label} value={vz} onChange={z => this.onChange(vx, vy, z)}>
+        <Vector3Scrubber {...rest} tag="div" value={vz} onChange={z => this.onChange(vx, vy, z)}>
           Z:
-        </Scrubber>
+        </Vector3Scrubber>
         <NumericInput {...rest} value={vz} onChange={z => this.onChange(vx, vy, z)} />
-      </div>
+      </Vector3InputContainer>
     );
   }
 }

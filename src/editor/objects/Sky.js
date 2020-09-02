@@ -1,4 +1,18 @@
-import THREE from "../../vendor/three";
+import {
+  Scene,
+  CubeCamera,
+  Object3D,
+  Vector3,
+  BoxBufferGeometry,
+  ShaderMaterial,
+  UniformsUtils,
+  BackSide,
+  Mesh,
+  UniformsLib
+} from "three";
+import { PMREMGenerator } from "three/examples/jsm/pmrem/PMREMGenerator";
+import { PMREMCubeUVPacker } from "three/examples/jsm/pmrem/PMREMCubeUVPacker";
+
 /**
  * @author zz85 / https://github.com/zz85
  *
@@ -16,6 +30,9 @@ import THREE from "../../vendor/three";
  */
 
 const vertexShader = `
+#include <common>
+#include <fog_pars_vertex>
+
 uniform vec3 sunPosition;
 uniform float rayleigh;
 uniform float turbidity;
@@ -64,11 +81,12 @@ vec3 totalMie( float T ) {
 }
 
 void main() {
+  #include <begin_vertex>
 
   vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
   vWorldPosition = worldPosition.xyz;
 
-  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+  #include <project_vertex>
 
   vSunDirection = normalize( sunPosition );
 
@@ -85,10 +103,14 @@ void main() {
   // mie coefficients
   vBetaM = totalMie( turbidity ) * mieCoefficient;
 
+  #include <fog_vertex>
 }
 `;
 
 const fragmentShader = `
+#include <common>
+#include <fog_pars_fragment>
+
 varying vec3 vWorldPosition;
 varying vec3 vSunDirection;
 varying float vSunfade;
@@ -187,36 +209,46 @@ void main() {
 
   gl_FragColor = vec4( retColor, 1.0 );
 
+  #include <fog_fragment>
 }
 `;
 
-export default class Sky extends THREE.Object3D {
+export default class Sky extends Object3D {
   static shader = {
-    uniforms: {
-      luminance: { value: 1 },
-      turbidity: { value: 10 },
-      rayleigh: { value: 2 },
-      mieCoefficient: { value: 0.005 },
-      mieDirectionalG: { value: 0.8 },
-      sunPosition: { value: new THREE.Vector3() }
-    },
+    uniforms: UniformsUtils.merge([
+      UniformsLib.fog,
+      {
+        luminance: { value: 1 },
+        turbidity: { value: 10 },
+        rayleigh: { value: 2 },
+        mieCoefficient: { value: 0.005 },
+        mieDirectionalG: { value: 0.8 },
+        sunPosition: { value: new Vector3() }
+      }
+    ]),
     vertexShader,
     fragmentShader
   };
 
-  static _geometry = new THREE.BoxBufferGeometry(1, 1, 1);
+  static _geometry = new BoxBufferGeometry(1, 1, 1);
 
   constructor() {
     super();
 
-    const material = new THREE.ShaderMaterial({
+    const material = new ShaderMaterial({
       fragmentShader: Sky.shader.fragmentShader,
       vertexShader: Sky.shader.vertexShader,
-      uniforms: THREE.UniformsUtils.clone(Sky.shader.uniforms),
-      side: THREE.BackSide
+      uniforms: UniformsUtils.clone(Sky.shader.uniforms),
+      side: BackSide,
+      fog: true
     });
 
-    this.sky = new THREE.Mesh(Sky._geometry, material);
+    this.skyScene = new Scene();
+    this.cubeCamera = new CubeCamera(1, 100000, 512);
+    this.skyScene.add(this.cubeCamera);
+
+    this.sky = new Mesh(Sky._geometry, material);
+    this.sky.name = "Sky";
     this.add(this.sky);
 
     this._inclination = 0;
@@ -306,15 +338,34 @@ export default class Sky extends THREE.Object3D {
     this.sky.scale.set(distance, distance, distance);
   }
 
-  copy(source, recursive) {
-    super.copy(source, false);
+  generateEnvironmentMap(renderer) {
+    this.skyScene.add(this.sky);
+    this.cubeCamera.update(renderer, this.skyScene);
+    this.add(this.sky);
+    const vrEnabled = renderer.vr.enabled;
+    renderer.vr.enabled = false;
+    const pmremGenerator = new PMREMGenerator(this.cubeCamera.renderTarget.texture);
+    pmremGenerator.update(renderer);
+    const pmremCubeUVPacker = new PMREMCubeUVPacker(pmremGenerator.cubeLods);
+    pmremCubeUVPacker.update(renderer);
+    renderer.vr.enabled = vrEnabled;
+    pmremGenerator.dispose();
+    pmremCubeUVPacker.dispose();
+    return pmremCubeUVPacker.CubeUVRenderTarget.texture;
+  }
+
+  copy(source, recursive = true) {
+    if (recursive) {
+      this.remove(this.sky);
+    }
+
+    super.copy(source, recursive);
 
     if (recursive) {
-      for (const child of source.children) {
-        if (child !== this.sky) {
-          const clonedChild = child.clone();
-          this.add(clonedChild);
-        }
+      const skyIndex = source.children.indexOf(source.sky);
+
+      if (skyIndex !== -1) {
+        this.sky = this.children[skyIndex];
       }
     }
 

@@ -1,23 +1,24 @@
 import React from "react";
-import classNames from "classnames";
 import PropTypes from "prop-types";
-import inputGroupStyles from "./InputGroup.scss";
+import { InputGroupContainer, InputGroupContent, InputGroupInfo } from "./InputGroup";
 import Scrubber from "./Scrubber";
 import NumericInput from "./NumericInput";
 
-export default function NumericInputGroup({ name, className, disabled, ...rest }) {
+export default function NumericInputGroup({ name, className, info, ...rest }) {
+  const { displayPrecision, ...scrubberProps } = rest;
   return (
-    <div className={classNames(inputGroupStyles.inputGroup, className, disabled && "disabled")}>
-      <Scrubber {...rest}>{name}:</Scrubber>
-      <div className="content">
+    <InputGroupContainer>
+      <Scrubber {...scrubberProps}>{name}:</Scrubber>
+      <InputGroupContent>
         <NumericInput {...rest} />
-      </div>
-    </div>
+        {info && <InputGroupInfo info={info} />}
+      </InputGroupContent>
+    </InputGroupContainer>
   );
 }
 
 NumericInputGroup.propTypes = {
   name: PropTypes.string.isRequired,
   className: PropTypes.string,
-  disabled: PropTypes.bool
+  info: PropTypes.string
 };

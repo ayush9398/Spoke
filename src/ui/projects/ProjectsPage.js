@@ -1,17 +1,74 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
-import classNames from "classnames";
+import configs from "../../configs";
 import { withApi } from "../contexts/ApiContext";
 import NavBar from "../navigation/NavBar";
-import styles from "./ProjectsPage.scss";
-import ProjectGrid from "./ProjectGrid";
+import {
+  ProjectGrid,
+  ProjectGridContainer,
+  ProjectGridHeader,
+  ProjectGridHeaderRow,
+  ProjectGridContent,
+  ErrorMessage
+} from "./ProjectGrid";
+import { Button } from "../inputs/Button";
 import Footer from "../navigation/Footer";
-import Button from "../inputs/Button";
-import PrimaryLink from "../inputs/PrimaryLink";
-import Loading from "../Loading";
-import { connectMenu, ContextMenu, MenuItem } from "react-contextmenu";
-import "../styles/vendor/react-contextmenu/index.scss";
+import { MediumButton } from "../inputs/Button";
+import { Link } from "react-router-dom";
+import LatestUpdate from "../whats-new/LatestUpdate";
+import { connectMenu, ContextMenu, MenuItem } from "../layout/ContextMenu";
 import templates from "./templates";
+import styled from "styled-components";
+
+export const ProjectsSection = styled.section`
+  padding-bottom: 100px;
+  display: flex;
+  flex: ${props => (props.flex === undefined ? 1 : props.flex)};
+
+  &:first-child {
+    padding-top: 100px;
+  }
+
+  h1 {
+    font-size: 36px;
+  }
+
+  h2 {
+    font-size: 16px;
+  }
+`;
+
+export const ProjectsContainer = styled.div`
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 0 20px;
+`;
+
+const WelcomeContainer = styled(ProjectsContainer)`
+  align-items: center;
+
+  & > * {
+    text-align: center;
+  }
+
+  & > *:not(:first-child) {
+    margin-top: 20px;
+  }
+
+  h2 {
+    max-width: 480px;
+  }
+`;
+
+export const ProjectsHeader = styled.div`
+  margin-bottom: 36px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
 
 const contextMenuId = "project-menu";
 
@@ -43,7 +100,7 @@ class ProjectsPage extends Component {
           this.setState({
             projects: projects.map(project => ({
               ...project,
-              url: `/projects/${project.id}`
+              url: `/projects/${project.project_id}`
             })),
             loading: false
           });
@@ -64,8 +121,8 @@ class ProjectsPage extends Component {
 
   onDeleteProject = project => {
     this.props.api
-      .deleteProject(project.id)
-      .then(() => this.setState({ projects: this.state.projects.filter(p => p.id !== project.id) }))
+      .deleteProject(project.project_id)
+      .then(() => this.setState({ projects: this.state.projects.filter(p => p.project_id !== project.project_id) }))
       .catch(error => this.setState({ error }));
   };
 
@@ -82,18 +139,6 @@ class ProjectsPage extends Component {
   render() {
     const { error, loading, projects, isAuthenticated } = this.state;
 
-    let content;
-
-    if (loading) {
-      content = (
-        <div className={styles.loadingContainer}>
-          <Loading message="Loading projects..." />
-        </div>
-      );
-    } else {
-      content = <ProjectGrid projects={projects} newProjectUrl="/projects/new" contextMenuId={contextMenuId} />;
-    }
-
     const ProjectContextMenu = this.ProjectContextMenu;
 
     const topTemplates = [];
@@ -106,41 +151,50 @@ class ProjectsPage extends Component {
       <>
         <NavBar />
         <main>
-          {(!isAuthenticated || (projects.length === 0 && !loading)) && (
-            <section className={styles.projectsSection}>
-              <div className={classNames(styles.projectsContainer, styles.header)}>
-                <h1>Welcome to Spoke</h1>
+          {!isAuthenticated || (projects.length === 0 && !loading) ? (
+            <ProjectsSection flex={0}>
+              <WelcomeContainer>
+                <h1>Welcome{configs.isMoz() ? " to Spoke" : ""}</h1>
                 <h2>
                   If you&#39;re new here we recommend going through the tutorial. Otherwise, jump right in and create a
-                  project from scratch or one of our templates.
+                  project from scratch or from one of our templates.
                 </h2>
-                <Button medium to="/projects/tutorial">
+                <MediumButton as={Link} to="/projects/tutorial">
                   Start Tutorial
-                </Button>
-              </div>
-            </section>
+                </MediumButton>
+              </WelcomeContainer>
+            </ProjectsSection>
+          ) : (
+            <LatestUpdate />
           )}
-          <section className={styles.projectsSection}>
-            <div className={styles.projectsContainer}>
-              <div className={styles.projectsHeader}>
-                <h1>Templates</h1>
-                <PrimaryLink to="/projects/templates">View More</PrimaryLink>
-              </div>
-              <ProjectGrid projects={topTemplates} />
-            </div>
-          </section>
-          <section className={styles.projectsSection}>
-            <div className={styles.projectsContainer}>
-              <div className={styles.projectsHeader}>
+          <ProjectsSection>
+            <ProjectsContainer>
+              <ProjectsHeader>
                 <h1>Projects</h1>
-                <Button medium to="/projects/new">
-                  New Project
-                </Button>
-              </div>
-              {error && <div className={styles.error}>{error.message || "There was an unknown error."}</div>}
-              {content}
-            </div>
-          </section>
+              </ProjectsHeader>
+              <ProjectGridContainer>
+                <ProjectGridHeader>
+                  <ProjectGridHeaderRow></ProjectGridHeaderRow>
+                  <ProjectGridHeaderRow>
+                    <Button as={Link} to="/projects/create">
+                      New Project
+                    </Button>
+                  </ProjectGridHeaderRow>
+                </ProjectGridHeader>
+                <ProjectGridContent>
+                  {error && <ErrorMessage>{error.message}</ErrorMessage>}
+                  {!error && (
+                    <ProjectGrid
+                      loading={loading}
+                      projects={projects}
+                      newProjectPath="/projects/templates"
+                      contextMenuId={contextMenuId}
+                    />
+                  )}
+                </ProjectGridContent>
+              </ProjectGridContainer>
+            </ProjectsContainer>
+          </ProjectsSection>
           <ProjectContextMenu />
         </main>
         <Footer />

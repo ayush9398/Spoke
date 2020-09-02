@@ -1,4 +1,3 @@
-import THREE from "../../vendor/three";
 import EditorNodeMixin from "./EditorNodeMixin";
 import Sky from "../objects/Sky";
 
@@ -41,15 +40,6 @@ export default class SkyboxNode extends EditorNodeMixin(Sky) {
     return node;
   }
 
-  constructor(editor) {
-    super(editor);
-
-    this.skyScene = new THREE.Scene();
-    this.cubeCamera = new THREE.CubeCamera(1, 100000, 512);
-    this.cubeCamera.scale.set(-1, 1, 1);
-    this.skyScene.add(this.cubeCamera);
-  }
-
   onRendererChanged() {
     this.updateEnvironmentMap();
   }
@@ -67,17 +57,9 @@ export default class SkyboxNode extends EditorNodeMixin(Sky) {
   }
 
   updateEnvironmentMap() {
-    const renderer = this.editor.viewport.renderer;
-    this.skyScene.add(this.sky);
-    this.cubeCamera.update(renderer, this.skyScene);
-    this.add(this.sky);
-    const pmremGenerator = new THREE.PMREMGenerator(this.cubeCamera.renderTarget.texture);
-    pmremGenerator.update(renderer);
-    const pmremCubeUVPacker = new THREE.PMREMCubeUVPacker(pmremGenerator.cubeLods);
-    pmremCubeUVPacker.update(renderer);
-    this.editor.scene.updateEnvironmentMap(pmremCubeUVPacker.CubeUVRenderTarget.texture);
-    pmremGenerator.dispose();
-    pmremCubeUVPacker.dispose();
+    const renderer = this.editor.renderer.renderer;
+    const envMap = this.generateEnvironmentMap(renderer);
+    this.editor.scene.updateEnvironmentMap(envMap);
   }
 
   serialize() {
@@ -108,5 +90,9 @@ export default class SkyboxNode extends EditorNodeMixin(Sky) {
       distance: this.distance
     });
     this.replaceObject();
+  }
+
+  getRuntimeResourcesForStats() {
+    return { meshes: [this.sky], materials: [this.sky.material] };
   }
 }

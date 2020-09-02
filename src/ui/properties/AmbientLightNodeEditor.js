@@ -4,6 +4,7 @@ import NodeEditor from "./NodeEditor";
 import InputGroup from "../inputs/InputGroup";
 import ColorInput from "../inputs/ColorInput";
 import NumericInputGroup from "../inputs/NumericInputGroup";
+import { Sun } from "styled-icons/fa-solid/Sun";
 
 export default class AmbientLightNodeEditor extends Component {
   static propTypes = {
@@ -11,16 +12,16 @@ export default class AmbientLightNodeEditor extends Component {
     node: PropTypes.object
   };
 
-  static iconClassName = "fa-sun";
+  static iconComponent = Sun;
 
   static description = "A light which illuminates all objects in your scene.";
 
   onChangeColor = color => {
-    this.props.editor.setNodeProperty(this.props.node, "color", color);
+    this.props.editor.setPropertySelected("color", color);
   };
 
   onChangeIntensity = intensity => {
-    this.props.editor.setNodeProperty(this.props.node, "intensity", intensity);
+    this.props.editor.setPropertySelected("intensity", intensity);
   };
 
   render() {
@@ -34,6 +35,9 @@ export default class AmbientLightNodeEditor extends Component {
         <NumericInputGroup
           name="Intensity"
           min={0}
+          smallStep={0.001}
+          mediumStep={0.01}
+          largeStep={0.1}
           value={node.intensity}
           onChange={this.onChangeIntensity}
           unit="cd"

@@ -4,28 +4,28 @@ import InputGroup from "../inputs/InputGroup";
 import SelectInput from "../inputs/SelectInput";
 import BooleanInput from "../inputs/BooleanInput";
 import NumericInputGroup from "../inputs/NumericInputGroup";
-import THREE from "../../vendor/three";
+import { Vector2 } from "three";
 
 const ShadowMapResolutionOptions = [
   {
     label: "256px",
-    value: new THREE.Vector2(256, 256)
+    value: new Vector2(256, 256)
   },
   {
     label: "512px",
-    value: new THREE.Vector2(512, 512)
+    value: new Vector2(512, 512)
   },
   {
     label: "1024px",
-    value: new THREE.Vector2(1024, 1024)
+    value: new Vector2(1024, 1024)
   },
   {
     label: "2048px",
-    value: new THREE.Vector2(2048, 2048)
+    value: new Vector2(2048, 2048)
   },
   {
     label: "4096px (not recommended)",
-    value: new THREE.Vector2(4096, 4096)
+    value: new Vector2(4096, 4096)
   }
 ];
 
@@ -36,19 +36,19 @@ export default class LightShadowProperties extends Component {
   };
 
   onChangeShadowMapResolution = shadowMapResolution => {
-    this.props.editor.setNodeProperty(this.props.node, "shadowMapResolution", shadowMapResolution);
+    this.props.editor.setPropertySelected("shadowMapResolution", shadowMapResolution);
   };
 
   onChangeCastShadow = castShadow => {
-    this.props.editor.setNodeProperty(this.props.node, "castShadow", castShadow);
+    this.props.editor.setPropertySelected("castShadow", castShadow);
   };
 
   onChangeShadowBias = shadowBias => {
-    this.props.editor.setNodeProperty(this.props.node, "shadowBias", shadowBias);
+    this.props.editor.setPropertySelected("shadowBias", shadowBias);
   };
 
   onChangeShadowRadius = shadowRadius => {
-    this.props.editor.setNodeProperty(this.props.node, "shadowRadius", shadowRadius);
+    this.props.editor.setPropertySelected("shadowRadius", shadowRadius);
   };
 
   render() {
@@ -71,7 +71,7 @@ export default class LightShadowProperties extends Component {
           mediumStep={0.00001}
           smallStep={0.0001}
           largeStep={0.001}
-          precision={0.000001}
+          displayPrecision={0.000001}
           value={node.shadowBias}
           onChange={this.onChangeShadowBias}
         />
@@ -80,7 +80,7 @@ export default class LightShadowProperties extends Component {
           mediumStep={0.01}
           smallStep={0.1}
           largeStep={1}
-          precision={0.0001}
+          displayPrecision={0.0001}
           value={node.shadowRadius}
           onChange={this.onChangeShadowRadius}
         />

@@ -1,11 +1,6 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
-import styles from "./PropertiesPanelContainer.scss";
 import PropertyGroup from "./PropertyGroup";
-import TransformPropertyGroup from "./TransformPropertyGroup";
-import NameInputGroup from "./NameInputGroup";
-import InputGroup from "../inputs/InputGroup";
-import BooleanInput from "../inputs/BooleanInput";
 
 export default class NodeEditor extends Component {
   static propTypes = {
@@ -21,30 +16,13 @@ export default class NodeEditor extends Component {
     disableTransform: false
   };
 
-  onChangeVisible = value => {
-    this.props.editor.setNodeProperty(this.props.node, "visible", value);
-  };
-
   render() {
-    const { node, description, editor, children } = this.props;
+    const { node, description, children } = this.props;
 
     return (
-      <div className={styles.nodeEditor}>
-        <div className={styles.propertiesHeader}>
-          <div className={styles.propertiesPanelTopBar}>
-            <NameInputGroup node={node} editor={editor} />
-            {node.nodeName !== "Scene" && (
-              <InputGroup name="Visible" className={styles.visibleInputGroup}>
-                <BooleanInput value={node.visible} onChange={this.onChangeVisible} />
-              </InputGroup>
-            )}
-          </div>
-          {!node.disableTransform && <TransformPropertyGroup node={node} editor={editor} />}
-        </div>
-        <PropertyGroup name={node.nodeName} description={description}>
-          {children}
-        </PropertyGroup>
-      </div>
+      <PropertyGroup name={node.nodeName} description={description}>
+        {children}
+      </PropertyGroup>
     );
   }
 }

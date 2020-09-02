@@ -1,13 +1,87 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
-import styles from "./ProjectGridItem.scss";
-import { showMenu, ContextMenuTrigger } from "react-contextmenu";
-import MenuButton from "../inputs/MenuButton";
+import styled from "styled-components";
+import { showMenu } from "../layout/ContextMenu";
+import { MenuButton } from "../inputs/Button";
+import StylableContextMenuTrigger from "./StylableContextMenuTrigger";
+import { EllipsisV } from "styled-icons/fa-solid/EllipsisV";
 
 function collectMenuProps({ project }) {
   return { project };
 }
+
+const StyledProjectGridItem = styled(Link)`
+  display: flex;
+  flex-direction: column;
+  height: 220px;
+  border-radius: 6px;
+  background-color: ${props => props.theme.toolbar};
+  text-decoration: none;
+  border: 1px solid transparent;
+
+  &:hover {
+    color: inherit;
+    border-color: ${props => props.theme.selected};
+  }
+`;
+
+const StyledContextMenuTrigger = styled(StylableContextMenuTrigger)`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+`;
+
+const TitleContainer = styled.div`
+  display: flex;
+  height: 50px;
+  align-items: center;
+  padding: 0 16px;
+
+  h3 {
+    font-size: 16px;
+  }
+
+  button {
+    margin-left: auto;
+
+    svg {
+      width: 1em;
+      height: 1em;
+    }
+  }
+`;
+
+const ThumbnailContainer = styled.div`
+  display: flex;
+  flex: 1 0 auto;
+  justify-content: center;
+  align-items: stretch;
+  background-color: ${props => props.theme.panel};
+  overflow: hidden;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+`;
+
+const Thumbnail = styled.div`
+  display: flex;
+  flex: 1;
+  background-size: cover;
+  background-position: 50%;
+  background-repeat: no-repeat;
+  background-image: url(${props => props.src});
+`;
+
+const Col = styled.div`
+  display: flex;
+  flex-direction: column;
+
+  p {
+    color: ${props => props.theme.text2};
+  }
+`;
 
 export default class ProjectGridItem extends Component {
   static propTypes = {
@@ -33,41 +107,35 @@ export default class ProjectGridItem extends Component {
 
   render() {
     const { project, contextMenuId } = this.props;
+    const creatorAttribution = project.attributions && project.attributions.creator;
 
     const content = (
       <>
-        <div className={styles.thumbnailContainer}>
-          {project.thumbnailUrl && (
-            <div className={styles.thumbnail} style={{ backgroundImage: `url(${project.thumbnailUrl})` }} />
+        <ThumbnailContainer>{project.thumbnail_url && <Thumbnail src={project.thumbnail_url} />}</ThumbnailContainer>
+        <TitleContainer>
+          <Col>
+            <h3>{project.name}</h3>
+            {creatorAttribution && <p>{creatorAttribution}</p>}
+          </Col>
+          {contextMenuId && (
+            <MenuButton onClick={this.onShowMenu}>
+              <EllipsisV />
+            </MenuButton>
           )}
-        </div>
-        <div className={styles.titleContainer}>
-          <h3>{project.name}</h3>
-          {contextMenuId && <MenuButton onClick={this.onShowMenu} className="fas fa-ellipsis-v" />}
-        </div>
+        </TitleContainer>
       </>
     );
 
     if (contextMenuId) {
       return (
-        <Link className={styles.projectGridItem} to={project.url}>
-          <ContextMenuTrigger
-            attributes={{ className: styles.contextMenuTrigger }}
-            id={contextMenuId}
-            project={project}
-            collect={collectMenuProps}
-            holdToDisplay={-1}
-          >
+        <StyledProjectGridItem to={project.url}>
+          <StyledContextMenuTrigger id={contextMenuId} project={project} collect={collectMenuProps} holdToDisplay={-1}>
             {content}
-          </ContextMenuTrigger>
-        </Link>
+          </StyledContextMenuTrigger>
+        </StyledProjectGridItem>
       );
     } else {
-      return (
-        <Link className={styles.projectGridItem} to={project.url}>
-          {content}
-        </Link>
-      );
+      return <StyledProjectGridItem to={project.url}>{content}</StyledProjectGridItem>;
     }
   }
 }

@@ -4,27 +4,29 @@ import NodeEditor from "./NodeEditor";
 import InputGroup from "../inputs/InputGroup";
 import BooleanInput from "../inputs/BooleanInput";
 import NumericInputGroup from "../inputs/NumericInputGroup";
-import Button from "../inputs/Button";
+import { PropertiesPanelButton } from "../inputs/Button";
 import ProgressDialog from "../dialogs/ProgressDialog";
 import ErrorDialog from "../dialogs/ErrorDialog";
 import { withDialog } from "../contexts/DialogContext";
-import styles from "./FloorPlanNodeEditor.scss";
+import { withSettings } from "../contexts/SettingsContext";
+import { ShoePrints } from "styled-icons/fa-solid/ShoePrints";
 
 class FloorPlanNodeEditor extends Component {
   static propTypes = {
     hideDialog: PropTypes.func.isRequired,
     showDialog: PropTypes.func.isRequired,
     editor: PropTypes.object,
+    settings: PropTypes.object.isRequired,
     node: PropTypes.object
   };
 
-  static iconClassName = "fa-shoe-prints";
+  static iconComponent = ShoePrints;
 
   static description = "Sets the walkable surface area in your scene.";
 
   constructor(props) {
     super(props);
-    const createPropSetter = propName => value => this.props.editor.setNodeProperty(this.props.node, propName, value);
+    const createPropSetter = propName => value => this.props.editor.setPropertySelected(propName, value);
     this.onChangeAutoCellSize = createPropSetter("autoCellSize");
     this.onChangeCellSize = createPropSetter("cellSize");
     this.onChangeCellHeight = createPropSetter("cellHeight");
@@ -33,6 +35,8 @@ class FloorPlanNodeEditor extends Component {
     this.onChangeAgentMaxClimb = createPropSetter("agentMaxClimb");
     this.onChangeAgentMaxSlope = createPropSetter("agentMaxSlope");
     this.onChangeRegionMinSize = createPropSetter("regionMinSize");
+    this.onChangeMaxTriangles = createPropSetter("maxTriangles");
+    this.onChangeForceTrimesh = createPropSetter("forceTrimesh");
   }
 
   onRegenerate = async () => {
@@ -64,7 +68,7 @@ class FloorPlanNodeEditor extends Component {
   };
 
   render() {
-    const node = this.props.node;
+    const { node, settings } = this.props;
 
     return (
       <NodeEditor {...this.props} description={FloorPlanNodeEditor.description}>
@@ -75,14 +79,20 @@ class FloorPlanNodeEditor extends Component {
           <NumericInputGroup
             name="Cell Size"
             value={node.cellSize}
+            smallStep={0.001}
+            mediumStep={0.01}
+            largeStep={0.1}
             min={0.1}
-            precision={0.0001}
+            displayPrecision={0.0001}
             onChange={this.onChangeCellSize}
           />
         )}
         <NumericInputGroup
           name="Cell Height"
           value={node.cellHeight}
+          smallStep={0.001}
+          mediumStep={0.01}
+          largeStep={0.1}
           min={0.1}
           onChange={this.onChangeCellHeight}
           unit="m"
@@ -90,6 +100,9 @@ class FloorPlanNodeEditor extends Component {
         <NumericInputGroup
           name="Agent Height"
           value={node.agentHeight}
+          smallStep={0.001}
+          mediumStep={0.01}
+          largeStep={0.1}
           min={0.1}
           onChange={this.onChangeAgentHeight}
           unit="m"
@@ -98,6 +111,9 @@ class FloorPlanNodeEditor extends Component {
           name="Agent Radius"
           value={node.agentRadius}
           min={0}
+          smallStep={0.001}
+          mediumStep={0.01}
+          largeStep={0.1}
           onChange={this.onChangeAgentRadius}
           unit="m"
         />
@@ -105,6 +121,9 @@ class FloorPlanNodeEditor extends Component {
           name="Maximum Step Height"
           value={node.agentMaxClimb}
           min={0}
+          smallStep={0.001}
+          mediumStep={0.01}
+          largeStep={0.1}
           onChange={this.onChangeAgentMaxClimb}
           unit="m"
         />
@@ -113,6 +132,9 @@ class FloorPlanNodeEditor extends Component {
           value={node.agentMaxSlope}
           min={0.00001}
           max={90}
+          smallStep={1}
+          mediumStep={5}
+          largeStep={15}
           onChange={this.onChangeAgentMaxSlope}
           unit="°"
         />
@@ -120,18 +142,35 @@ class FloorPlanNodeEditor extends Component {
           name="Minimum Region Area"
           value={node.regionMinSize}
           min={0.1}
+          smallStep={0.1}
+          mediumStep={1}
+          largeStep={10}
           onChange={this.onChangeRegionMinSize}
           unit="m²"
         />
-        <Button className={styles.regenerateButton} onClick={this.onRegenerate}>
-          Regenerate
-        </Button>
+        <InputGroup name="Force Trimesh">
+          <BooleanInput value={node.forceTrimesh} onChange={this.onChangeForceTrimesh} />
+        </InputGroup>
+        {!node.forceTrimesh && settings.enableExperimentalFeatures && (
+          <NumericInputGroup
+            name="Collision Geo Triangle Threshold"
+            value={node.maxTriangles}
+            min={10}
+            max={10000}
+            smallStep={1}
+            mediumStep={100}
+            largeStep={1000}
+            precision={1}
+            onChange={this.onChangeMaxTriangles}
+          />
+        )}
+        <PropertiesPanelButton onClick={this.onRegenerate}>Regenerate</PropertiesPanelButton>
       </NodeEditor>
     );
   }
 }
 
-const FloorPlanNodeEditorContainer = withDialog(FloorPlanNodeEditor);
-FloorPlanNodeEditorContainer.iconClassName = FloorPlanNodeEditor.iconClassName;
+const FloorPlanNodeEditorContainer = withDialog(withSettings(FloorPlanNodeEditor));
+FloorPlanNodeEditorContainer.iconComponent = FloorPlanNodeEditor.iconComponent;
 FloorPlanNodeEditorContainer.description = FloorPlanNodeEditor.description;
 export default FloorPlanNodeEditorContainer;

@@ -1,11 +1,24 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
-import styles from "./OnboardingContainer.scss";
+import styled from "styled-components";
+import { trackEvent } from "../../telemetry";
+
+const StyledOnboardingContainer = styled.div`
+  position: absolute;
+  display: flex;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1000;
+`;
 
 export default class OnboardingContainer extends Component {
   static propTypes = {
     steps: PropTypes.array.isRequired,
-    onFinish: PropTypes.func.isRequired
+    onFinish: PropTypes.func.isRequired,
+    onSkip: PropTypes.func.isRequired
   };
 
   constructor(props) {
@@ -36,10 +49,11 @@ export default class OnboardingContainer extends Component {
   };
 
   skip = () => {
-    this.setStep(-1);
+    trackEvent("Tutorial Skipped", this.state.curStepIdx);
+    this.setStep(-1, true);
   };
 
-  setStep = index => {
+  setStep = (index, skip) => {
     const { steps, curStepIdx } = this.state;
 
     const stepProps = {
@@ -70,7 +84,11 @@ export default class OnboardingContainer extends Component {
     this.setState({ curStepIdx: index });
 
     if (index === -1) {
-      this.props.onFinish();
+      if (skip) {
+        this.props.onSkip(curStepIdx);
+      } else {
+        this.props.onFinish();
+      }
     }
   };
 
@@ -79,6 +97,7 @@ export default class OnboardingContainer extends Component {
     const step = steps[curStepIdx];
 
     const stepProps = {
+      ...this.props,
       steps,
       curStepIdx,
       nextStep: this.nextStep,
@@ -88,9 +107,9 @@ export default class OnboardingContainer extends Component {
     };
 
     return (
-      <div className={styles.onboardingContainer}>
+      <StyledOnboardingContainer>
         {step && (step.render ? step.render(stepProps) : React.createElement(step.component, stepProps))}
-      </div>
+      </StyledOnboardingContainer>
     );
   }
 }

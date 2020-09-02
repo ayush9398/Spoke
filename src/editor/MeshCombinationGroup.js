@@ -1,4 +1,5 @@
-import THREE from "../vendor/three";
+import { Mesh } from "three";
+import { BufferGeometryUtils } from "three/examples/jsm/utils/BufferGeometryUtils";
 import { isStatic } from "./StaticMode";
 import asyncTraverse from "./utils/asyncTraverse";
 import keysEqual from "./utils/keysEqual";
@@ -58,7 +59,9 @@ async function meshBasicMaterialComparator(group, a, b) {
     a.side === b.side &&
     a.transparent === b.transparent &&
     a.color.equals(b.color) &&
-    (await compareTextures(imageHashes, a.map, b.map))
+    a.lightMapIntensity === b.lightMapIntensity &&
+    (await compareTextures(imageHashes, a.map, b.map)) &&
+    (await compareTextures(imageHashes, a.lightMap, b.lightMap))
   );
 }
 
@@ -119,6 +122,7 @@ export default class MeshCombinationGroup {
       material.aoMap = await dedupeTexture(imageHashes, textureCache, material.aoMap);
       material.normalMap = await dedupeTexture(imageHashes, textureCache, material.normalMap);
       material.emissiveMap = await dedupeTexture(imageHashes, textureCache, material.emissiveMap);
+      material.lightMap = await dedupeTexture(imageHashes, textureCache, material.lightMap);
     }
 
     await asyncTraverse(rootObject, async object => {
@@ -151,7 +155,7 @@ export default class MeshCombinationGroup {
 
   constructor(initialObject, imageHashes) {
     if (!initialObject.isMesh) {
-      throw new Error("MeshCombinationGroup must be initialized with a THREE.Mesh.");
+      throw new Error("MeshCombinationGroup must be initialized with a Mesh.");
     }
 
     this.initialObject = initialObject;
@@ -160,7 +164,7 @@ export default class MeshCombinationGroup {
   }
 
   async _tryAdd(object) {
-    if (!object.isMesh) {
+    if (!object.isMesh || object.isSkinnedMesh) {
       return false;
     }
 
@@ -173,7 +177,8 @@ export default class MeshCombinationGroup {
     if (
       object.visible !== this.initialObject.visible ||
       object.castShadow !== this.initialObject.castShadow ||
-      object.receiveShadow !== this.initialObject.receiveShadow
+      object.receiveShadow !== this.initialObject.receiveShadow ||
+      object.userData.gltfExtensions
     ) {
       return false;
     }
@@ -203,14 +208,30 @@ export default class MeshCombinationGroup {
     for (const mesh of this.meshes) {
       // Clone buffer geometry in case it is re-used across meshes with different materials.
       const clonedBufferGeometry = mesh.geometry.clone();
-      clonedBufferGeometry.applyMatrix(mesh.matrixWorld);
+
+      const matrixWorld = mesh.matrixWorld;
+      clonedBufferGeometry.applyMatrix(matrixWorld);
+
+      // TODO: geometry.applyMatrix should handle this
+      const hasNegativeScale = matrixWorld.elements[0] * matrixWorld.elements[5] * matrixWorld.elements[10] < 0;
+
+      const indices = clonedBufferGeometry.index.array;
+
+      if (hasNegativeScale && indices) {
+        for (let i = 0; i < indices.length; i += 3) {
+          const tmp = indices[i + 1];
+          indices[i + 1] = indices[i + 2];
+          indices[i + 2] = tmp;
+        }
+      }
+
       bufferGeometries.push(clonedBufferGeometry);
       mesh.parent.remove(mesh);
     }
 
-    const combinedGeometry = THREE.BufferGeometryUtils.mergeBufferGeometries(bufferGeometries);
+    const combinedGeometry = BufferGeometryUtils.mergeBufferGeometries(bufferGeometries);
     delete combinedGeometry.userData.mergedUserData;
-    const combinedMesh = new THREE.Mesh(combinedGeometry, originalMesh.material);
+    const combinedMesh = new Mesh(combinedGeometry, originalMesh.material);
     combinedMesh.name = "CombinedMesh";
     combinedMesh.userData.gltfExtensions = {
       MOZ_hubs_components: {

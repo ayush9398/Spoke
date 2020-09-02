@@ -40,6 +40,9 @@ export const Fly = {
   moveZ: "moveZ",
   lookX: "lookX",
   lookY: "lookY",
+  moveDown: "moveDown",
+  moveUp: "moveUp",
+  moveY: "moveY",
   boost: "boost"
 };
 
@@ -64,14 +67,21 @@ export const Spoke = {
   setRotateMode: "setRotateMode",
   setScaleMode: "setScaleMode",
   toggleSnapMode: "toggleSnapMode",
-  invertSnap: "invertSnap",
-  toggleRotationSpace: "toggleRotationSpace",
+  toggleTransformPivot: "toggleTransformPivot",
+  modifier: "modifier",
+  shift: "shift",
+  toggleTransformSpace: "toggleTransformSpace",
   deleteSelected: "deleteSelected",
   undo: "undo",
   redo: "redo",
   duplicateSelected: "duplicateSelected",
+  groupSelected: "groupSelected",
   saveProject: "saveProject",
-  deselect: "deselect"
+  cancel: "cancel",
+  rotateLeft: "rotateLeft",
+  rotateRight: "rotateRight",
+  incrementGridHeight: "incrementGridHeight",
+  decrementGridHeight: "decrementGridHeight"
 };
 
 export const FlyMapping = {
@@ -81,6 +91,8 @@ export const FlyMapping = {
       a: Fly.moveLeft,
       s: Fly.moveBackward,
       d: Fly.moveRight,
+      r: Fly.moveDown,
+      t: Fly.moveUp,
       shift: Fly.boost
     }
   },
@@ -94,6 +106,10 @@ export const FlyMapping = {
     {
       transform: input => input.get(Fly.moveRight) - input.get(Fly.moveLeft),
       action: Fly.moveX
+    },
+    {
+      transform: input => input.get(Fly.moveUp) - input.get(Fly.moveDown),
+      action: Fly.moveY
     },
     {
       transform: input => input.get(Fly.moveBackward) - input.get(Fly.moveForward),
@@ -136,21 +152,29 @@ export const SpokeMapping = {
   },
   keyboard: {
     pressed: {
-      mod: Spoke.invertSnap
+      mod: Spoke.modifier,
+      shift: Spoke.shift
     },
     hotkeys: {
+      "=": Spoke.incrementGridHeight,
+      "-": Spoke.decrementGridHeight,
       f: Spoke.focusSelection,
-      w: Spoke.setTranslateMode,
-      e: Spoke.setRotateMode,
-      r: Spoke.setScaleMode,
-      x: Spoke.toggleSnapMode,
-      z: Spoke.toggleRotationSpace,
+      t: Spoke.setTranslateMode,
+      r: Spoke.setRotateMode,
+      y: Spoke.setScaleMode,
+      q: Spoke.rotateLeft,
+      e: Spoke.rotateRight,
+      g: Spoke.grab,
+      z: Spoke.toggleTransformSpace,
+      x: Spoke.toggleTransformPivot,
+      c: Spoke.toggleSnapMode,
       backspace: Spoke.deleteSelected,
       del: Spoke.deleteSelected,
       "mod+z": Spoke.undo,
       "mod+shift+z": Spoke.redo,
       "mod+d": Spoke.duplicateSelected,
-      esc: Spoke.deselect
+      "mod+g": Spoke.groupSelected,
+      esc: Spoke.cancel
     },
     globalHotkeys: {
       "mod+s": Spoke.saveProject

@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import PropTypes from "prop-types";
 import { withApi } from "../ui/contexts/ApiContext";
+import { trackEvent } from "../telemetry";
 
 import AuthEmailSentMessage from "./AuthEmailSentMessage";
 import AuthForm from "./AuthForm";
@@ -8,7 +9,7 @@ import AuthForm from "./AuthForm";
 class AuthContainer extends Component {
   static propTypes = {
     api: PropTypes.object.isRequired,
-    onSuccess: PropTypes.func.isRequired,
+    onSuccess: PropTypes.func,
     onChange: PropTypes.func
   };
 
@@ -28,7 +29,7 @@ class AuthContainer extends Component {
 
     this.props.api
       .authenticate(email, abortController.signal)
-      .then(this.props.onSuccess)
+      .then(this.onSuccess)
       .catch(this.onError);
 
     const nextState = { emailSent: true, email, abortController };
@@ -37,7 +38,17 @@ class AuthContainer extends Component {
       this.props.onChange(nextState);
     }
 
+    trackEvent("Login Submitted");
+
     this.setState(nextState);
+  };
+
+  onSuccess = (...args) => {
+    trackEvent("Login Successful");
+
+    if (this.props.onSuccess) {
+      this.props.onSuccess(...args);
+    }
   };
 
   onError = err => {
@@ -51,6 +62,8 @@ class AuthContainer extends Component {
     if (this.props.onChange) {
       this.props.onChange(nextState);
     }
+
+    trackEvent("Login Error");
 
     this.setState(nextState);
   };
@@ -67,6 +80,8 @@ class AuthContainer extends Component {
     }
 
     this.setState(nextState);
+
+    trackEvent("Login Canceled");
   };
 
   render() {

@@ -1,14 +1,11 @@
-import puppeteer from "puppeteer-core";
-import getChrome from "get-chrome";
+import puppeteer from "puppeteer";
 
 export default function withPage(path, timeout = 60000) {
-  const url = new URL(path, "https://localhost:9091");
-  const chromePath = process.env.CHROME_PATH || getChrome();
+  const url = new URL(path, "https://hubs.local:9090");
 
   return async (t, run) => {
     const browser = await puppeteer.launch({
-      headless: false,
-      executablePath: chromePath,
+      headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--ignore-gpu-blacklist", "--ignore-certificate-errors"]
     });
 

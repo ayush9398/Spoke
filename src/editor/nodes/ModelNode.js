@@ -1,7 +1,23 @@
-import THREE from "../../vendor/three";
+import { Box3, Sphere, PropertyBinding } from "three";
 import Model from "../objects/Model";
 import EditorNodeMixin from "./EditorNodeMixin";
 import { setStaticMode, StaticModes } from "../StaticMode";
+import cloneObject3D from "../utils/cloneObject3D";
+import { RethrownError } from "../utils/errors";
+import { getObjectPerfIssues, maybeAddLargeFileIssue } from "../utils/performance";
+
+const defaultStats = {
+  nodes: 0,
+  meshes: 0,
+  materials: 0,
+  textures: 0,
+  polygons: 0,
+  vertices: 0,
+  jsonSize: 0,
+  bufferInfo: {},
+  textureInfo: {},
+  meshInfo: {}
+};
 
 export default class ModelNode extends EditorNodeMixin(Model) {
   static nodeName = "Model";
@@ -9,18 +25,18 @@ export default class ModelNode extends EditorNodeMixin(Model) {
   static legacyComponentName = "gltf-model";
 
   static initialElementProps = {
-    scaleToFit: true,
+    initialScale: "fit",
     src: "https://sketchfab.com/models/a4c500d7358a4a199b6a5cd35f416466"
   };
 
-  static async deserialize(editor, json, loadAsync) {
+  static async deserialize(editor, json, loadAsync, onError) {
     const node = await super.deserialize(editor, json);
 
     loadAsync(
       (async () => {
         const { src, attribution } = json.components.find(c => c.name === "gltf-model").props;
 
-        await node.load(src);
+        await node.load(src, onError);
 
         // Legacy, might be a raw string left over before switch to JSON.
         if (attribution && typeof attribution === "string") {
@@ -35,8 +51,15 @@ export default class ModelNode extends EditorNodeMixin(Model) {
 
         const loopAnimationComponent = json.components.find(c => c.name === "loop-animation");
 
-        if (loopAnimationComponent && loopAnimationComponent.props.clip) {
-          node.activeClipName = loopAnimationComponent.props.clip;
+        if (loopAnimationComponent && loopAnimationComponent.props) {
+          const { clip, activeClipIndex } = loopAnimationComponent.props;
+
+          if (activeClipIndex !== undefined) {
+            node.activeClipIndex = loopAnimationComponent.props.activeClipIndex;
+          } else if (clip !== undefined && node.model && node.model.animations) {
+            // DEPRECATED: Old loop-animation component stored the clip name rather than the clip index
+            node.activeClipIndex = node.model.animations.findIndex(animation => animation.name === clip);
+          }
         }
 
         const shadowComponent = json.components.find(c => c.name === "shadow");
@@ -57,9 +80,11 @@ export default class ModelNode extends EditorNodeMixin(Model) {
     this._canonicalUrl = "";
     this.collidable = true;
     this.walkable = true;
-    this.scaleToFit = false;
-    this.boundingBox = new THREE.Box3();
-    this.boundingSphere = new THREE.Sphere();
+    this.initialScale = 1;
+    this.boundingBox = new Box3();
+    this.boundingSphere = new Sphere();
+    this.stats = defaultStats;
+    this.gltfJson = null;
   }
 
   // Overrides Model's src property and stores the original (non-resolved) url.
@@ -74,50 +99,89 @@ export default class ModelNode extends EditorNodeMixin(Model) {
 
   // Overrides Model's loadGLTF method and uses the Editor's gltf cache.
   async loadGLTF(src) {
-    const gltf = await this.editor.gltfCache.get(src);
+    const loader = this.editor.gltfCache.getLoader(src);
 
-    const sketchfabExtras = gltf.asset && gltf.asset.extras;
+    const { scene, json, stats } = await loader.getDependency("gltf");
+
+    this.stats = stats;
+    this.gltfJson = json;
+
+    const clonedScene = cloneObject3D(scene);
+
+    const sketchfabExtras = json.asset && json.asset.extras;
 
     if (sketchfabExtras) {
       const name = sketchfabExtras.title;
-      const author = sketchfabExtras.author.replace(/ \(http.+\)/, "");
+      const author = sketchfabExtras.author ? sketchfabExtras.author.replace(/ \(http.+\)/, "") : "";
       const url = sketchfabExtras.source || this._canonicalUrl;
-      gltf.scene.name = name;
+      clonedScene.name = name;
       this.attribution = { name, author, url };
     }
 
-    return gltf;
+    return clonedScene;
   }
 
   // Overrides Model's load method and resolves the src url before loading.
-  async load(src) {
+  async load(src, onError) {
     const nextSrc = src || "";
 
-    if (nextSrc === this._canonicalUrl) {
+    if (nextSrc === this._canonicalUrl && nextSrc !== "") {
       return;
     }
 
     this._canonicalUrl = nextSrc;
     this.attribution = null;
+    this.issues = [];
+    this.stats = defaultStats;
+    this.gltfJson = null;
 
     if (this.model) {
+      this.editor.renderer.removeBatchedObject(this.model);
       this.remove(this.model);
       this.model = null;
     }
 
-    if (this.errorMesh) {
-      this.remove(this.errorMesh);
-      this.errorMesh = null;
-    }
-
+    this.hideErrorIcon();
     this.showLoadingCube();
 
     try {
       const { accessibleUrl, files } = await this.editor.api.resolveMedia(src);
 
+      if (this.model) {
+        this.editor.renderer.removeBatchedObject(this.model);
+      }
+
       await super.load(accessibleUrl);
 
-      if (this.scaleToFit) {
+      if (this.stats) {
+        const textureInfo = this.stats.textureInfo;
+        for (const key in textureInfo) {
+          if (!Object.prototype.hasOwnProperty.call(textureInfo, key)) continue;
+          const info = textureInfo[key];
+
+          if (info.size === undefined) {
+            let file;
+
+            for (const name in files) {
+              if (Object.prototype.hasOwnProperty.call(files, name) && files[name].url === info.url) {
+                file = files[name];
+                break;
+              }
+            }
+
+            if (file) {
+              info.size = file.size;
+              this.stats.totalSize += file.size;
+            }
+          }
+        }
+      }
+
+      if (this.model) {
+        this.editor.renderer.addBatchedObject(this.model);
+      }
+
+      if (this.initialScale === "fit") {
         this.scale.set(1, 1, 1);
 
         if (this.model) {
@@ -139,37 +203,81 @@ export default class ModelNode extends EditorNodeMixin(Model) {
         }
 
         // Clear scale to fit property so that the swapped model maintains the same scale.
-        this.scaleToFit = false;
+        this.initialScale = 1;
+      } else {
+        this.scale.multiplyScalar(this.initialScale);
+        this.initialScale = 1;
       }
 
-      this.editor.signals.objectChanged.dispatch(this);
+      if (this.model) {
+        this.model.traverse(object => {
+          if (object.material && object.material.isMeshStandardMaterial) {
+            object.material.envMap = this.editor.scene.environmentMap;
+            object.material.needsUpdate = true;
+          }
+        });
 
-      if (files) {
-        // Revoke any object urls from the SketchfabZipLoader.
-        for (const key in files) {
-          URL.revokeObjectURL(files[key]);
-        }
+        this.issues = getObjectPerfIssues(this.model);
+        maybeAddLargeFileIssue("gltf", this.stats.totalSize, this.issues);
       }
-    } catch (e) {
-      console.error(e);
+
+      this.updateStaticModes();
+
+      // if (files) {
+      //   // Revoke any object urls from the SketchfabZipLoader.
+      //   for (const key in files) {
+      //     if (Object.prototype.hasOwnProperty.call(files, key)) {
+      //       URL.revokeObjectURL(files[key].url);
+      //     }
+      //   }
+      // }
+    } catch (error) {
+      this.showErrorIcon();
+
+      const modelError = new RethrownError(`Error loading model "${this._canonicalUrl}"`, error);
+
+      if (onError) {
+        onError(this, modelError);
+      }
+
+      console.error(modelError);
+
+      this.issues.push({ severity: "error", message: "Error loading model." });
     }
 
+    this.editor.emit("objectsChanged", [this]);
+    this.editor.emit("selectionChanged");
     this.hideLoadingCube();
 
-    if (!this.model) {
-      return this;
-    }
-
-    this.updateStaticModes();
-
-    this.model.traverse(object => {
-      if (object.material && object.material.isMeshStandardMaterial) {
-        object.material.envMap = this.editor.scene.environmentMap;
-        object.material.needsUpdate = true;
-      }
-    });
-
     return this;
+  }
+
+  onAdd() {
+    if (this.model) {
+      this.editor.renderer.addBatchedObject(this.model);
+    }
+  }
+
+  onRemove() {
+    if (this.model) {
+      this.editor.renderer.removeBatchedObject(this.model);
+    }
+  }
+
+  onPlay() {
+    this.playAnimation();
+  }
+
+  onPause() {
+    this.stopAnimation();
+  }
+
+  onUpdate(dt) {
+    super.onUpdate(dt);
+
+    if (this.editor.playing) {
+      this.update(dt);
+    }
   }
 
   updateStaticModes() {
@@ -177,54 +285,21 @@ export default class ModelNode extends EditorNodeMixin(Model) {
 
     setStaticMode(this.model, StaticModes.Static);
 
-    if (this.animations.length > 0) {
-      for (const animation of this.animations) {
+    if (this.model.animations && this.model.animations.length > 0) {
+      for (const animation of this.model.animations) {
         for (const track of animation.tracks) {
-          const { nodeName } = THREE.PropertyBinding.parseTrackName(track.name);
-          const animatedNode = this.model.getObjectByName(nodeName);
+          const { nodeName: uuid } = PropertyBinding.parseTrackName(track.name);
+          const animatedNode = this.model.getObjectByProperty("uuid", uuid);
+
+          if (!animatedNode) {
+            throw new Error(
+              `Model.updateStaticModes: model with url "${this._canonicalUrl}" has an invalid animation "${animation.name}"`
+            );
+          }
+
           setStaticMode(animatedNode, StaticModes.Dynamic);
         }
       }
-    }
-  }
-
-  get activeClipName() {
-    if (this.clipActions.length > 0) {
-      return this.clipActions[0].getClip().name;
-    }
-
-    return null;
-  }
-
-  set activeClipName(clipName) {
-    if (!clipName && this.editor.playing) {
-      for (const clipAction of this.clipActions) {
-        clipAction.stop();
-      }
-    }
-
-    this.clipActions = [];
-    const clipAction = this.addClipAction(clipName);
-
-    if (clipAction && this.editor.playing) {
-      clipAction.play();
-    }
-  }
-
-  onPlay() {
-    for (const clipAction of this.clipActions) {
-      clipAction.play();
-    }
-  }
-
-  onUpdate(dt) {
-    super.onUpdate(dt);
-    this.update(dt);
-  }
-
-  onPause() {
-    for (const clipAction of this.clipActions) {
-      clipAction.stop();
     }
   }
 
@@ -240,9 +315,9 @@ export default class ModelNode extends EditorNodeMixin(Model) {
       }
     };
 
-    if (this.clipActions.length > 0) {
+    if (this.activeClipIndex !== -1) {
       components["loop-animation"] = {
-        clip: this.clipActions[0].getClip().name
+        activeClipIndex: this.activeClipIndex
       };
     }
 
@@ -257,17 +332,26 @@ export default class ModelNode extends EditorNodeMixin(Model) {
     return super.serialize(components);
   }
 
-  copy(source, recursive) {
+  copy(source, recursive = true) {
     super.copy(source, recursive);
-    this.updateStaticModes();
-    this._canonicalUrl = source._canonicalUrl;
+
+    if (source.loadingCube) {
+      this.initialScale = source.initialScale;
+      this.load(source.src);
+    } else {
+      this.updateStaticModes();
+      this.stats = JSON.parse(JSON.stringify(source.stats));
+      this.gltfJson = source.gltfJson;
+      this._canonicalUrl = source._canonicalUrl;
+    }
+
     this.attribution = source.attribution;
     this.collidable = source.collidable;
     this.walkable = source.walkable;
     return this;
   }
 
-  prepareForExport() {
+  prepareForExport(ctx) {
     super.prepareForExport();
     this.addGLTFComponent("shadow", {
       cast: this.castShadow,
@@ -275,10 +359,18 @@ export default class ModelNode extends EditorNodeMixin(Model) {
     });
 
     // TODO: Support exporting more than one active clip.
-    if (this.clipActions.length > 0) {
-      this.addGLTFComponent("loop-animation", {
-        clip: this.clipActions[0].getClip().name
-      });
+    if (this.activeClip) {
+      const activeClipIndex = ctx.animations.indexOf(this.activeClip);
+
+      if (activeClipIndex === -1) {
+        throw new Error(
+          `Error exporting model "${this.name}" with url "${this._canonicalUrl}". Animation could not be found.`
+        );
+      } else {
+        this.addGLTFComponent("loop-animation", {
+          activeClipIndex: activeClipIndex
+        });
+      }
     }
   }
 }

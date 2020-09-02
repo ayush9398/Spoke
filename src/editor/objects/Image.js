@@ -1,22 +1,41 @@
-import THREE from "../../vendor/three";
-import eventToMessage from "../utils/eventToMessage";
-import loadErrorTexture from "../utils/loadErrorTexture";
+import {
+  Object3D,
+  MeshBasicMaterial,
+  SphereBufferGeometry,
+  DoubleSide,
+  Mesh,
+  sRGBEncoding,
+  LinearFilter,
+  PlaneBufferGeometry
+} from "three";
+import loadTexture from "../utils/loadTexture";
 
 export const ImageProjection = {
   Flat: "flat",
   Equirectangular360: "360-equirectangular"
 };
 
-export default class Image extends THREE.Object3D {
+export const ImageAlphaMode = {
+  Opaque: "opaque",
+  Blend: "blend",
+  Mask: "mask"
+};
+
+export default class Image extends Object3D {
   constructor() {
     super();
     this._src = null;
     this._projection = "flat";
+    this._alphaMode = ImageAlphaMode.Opaque;
+    this._alphaCutoff = 0.5;
 
-    const geometry = new THREE.PlaneGeometry();
-    const material = new THREE.MeshBasicMaterial();
-    material.side = THREE.DoubleSide;
-    this._mesh = new THREE.Mesh(geometry, material);
+    const geometry = new PlaneBufferGeometry();
+    const material = new MeshBasicMaterial();
+    material.side = DoubleSide;
+    material.transparent = this.alphaMode === ImageAlphaMode.Blend;
+    material.alphaTest = this.alphaMode === ImageAlphaMode.Mask ? this._alphaCutoff : 0;
+    this._mesh = new Mesh(geometry, material);
+    this._mesh.name = "ImageMesh";
     this.add(this._mesh);
     this._texture = null;
   }
@@ -30,9 +49,28 @@ export default class Image extends THREE.Object3D {
   }
 
   loadTexture(src) {
-    return new Promise((resolve, reject) => {
-      new THREE.TextureLoader().load(src, resolve, null, e => reject(`Error loading Image. ${eventToMessage(e)}`));
-    });
+    return loadTexture(src);
+  }
+
+  get alphaMode() {
+    return this._alphaMode;
+  }
+
+  set alphaMode(v) {
+    this._alphaMode = v;
+    this._mesh.material.transparent = v === ImageAlphaMode.Blend;
+    this._mesh.material.alphaTest = v === ImageAlphaMode.Mask ? this.alphaCutoff : 0;
+    this._mesh.material.needsUpdate = true;
+  }
+
+  get alphaCutoff() {
+    return this._alphaCutoff;
+  }
+
+  set alphaCutoff(v) {
+    this._alphaCutoff = v;
+    this._mesh.material.alphaTest = v;
+    this._mesh.material.needsUpdate = true;
   }
 
   get projection() {
@@ -40,27 +78,40 @@ export default class Image extends THREE.Object3D {
   }
 
   set projection(projection) {
-    const material = new THREE.MeshBasicMaterial();
+    const material = new MeshBasicMaterial();
 
     let geometry;
 
     if (projection === "360-equirectangular") {
-      geometry = new THREE.SphereBufferGeometry(1, 64, 32);
+      geometry = new SphereBufferGeometry(1, 64, 32);
       // invert the geometry on the x-axis so that all of the faces point inward
       geometry.scale(-1, 1, 1);
     } else {
-      geometry = new THREE.PlaneGeometry();
-      material.side = THREE.DoubleSide;
+      geometry = new PlaneBufferGeometry();
+      material.side = DoubleSide;
     }
 
     material.map = this._texture;
 
+    material.transparent = this.alphaMode === ImageAlphaMode.Blend;
+    material.alphaTest = this.alphaMode === ImageAlphaMode.Mask ? this._alphaCutoff : 0;
+
     this._projection = projection;
 
-    // Replace existing mesh
-    this.remove(this._mesh);
-    this._mesh = new THREE.Mesh(geometry, material);
-    this.add(this._mesh);
+    const nextMesh = new Mesh(geometry, material);
+    nextMesh.name = "ImageMesh";
+    nextMesh.visible = this._mesh.visible;
+
+    const meshIndex = this.children.indexOf(this._mesh);
+
+    if (meshIndex === -1) {
+      this.add(nextMesh);
+    } else {
+      this.children.splice(meshIndex, 1, nextMesh);
+      nextMesh.parent = this;
+    }
+
+    this._mesh = nextMesh;
 
     this.onResize();
   }
@@ -75,35 +126,17 @@ export default class Image extends THREE.Object3D {
       material.map.dispose();
     }
 
-    if (!src) {
-      material.map = null;
-      this._mesh.visible = true;
-      return;
-    }
-
-    let texture;
-
-    try {
-      if (src) {
-        texture = await this.loadTexture(src);
-        // TODO: resize to maintain aspect ratio but still allow scaling.
-        texture.encoding = THREE.sRGBEncoding;
-        texture.minFilter = THREE.LinearFilter;
-      } else {
-        texture = await loadErrorTexture();
-      }
-    } catch (err) {
-      texture = await loadErrorTexture();
-      console.warn(`Error loading image node with src: "${src}": "${err.message || "unknown error"}"`);
-    }
+    const texture = await this.loadTexture(src);
+    // TODO: resize to maintain aspect ratio but still allow scaling.
+    texture.encoding = sRGBEncoding;
+    texture.minFilter = LinearFilter;
 
     this._texture = texture;
 
     this.onResize();
 
-    if (texture.format === THREE.RGBAFormat) {
-      this._mesh.material.transparent = true;
-    }
+    material.transparent = this.alphaMode === ImageAlphaMode.Blend;
+    material.alphaTest = this.alphaMode === ImageAlphaMode.Mask ? this._alphaCutoff : 0;
 
     this._mesh.material.map = this._texture;
     this._mesh.material.needsUpdate = true;
@@ -121,12 +154,18 @@ export default class Image extends THREE.Object3D {
     }
   }
 
-  copy(source, recursive) {
-    super.copy(source, false);
+  copy(source, recursive = true) {
+    if (recursive) {
+      this.remove(this._mesh);
+    }
 
-    for (const child of source.children) {
-      if (recursive === true && child !== source._mesh) {
-        this.add(child.clone());
+    super.copy(source, recursive);
+
+    if (recursive) {
+      const _meshIndex = source.children.indexOf(source._mesh);
+
+      if (_meshIndex !== -1) {
+        this._mesh = this.children[_meshIndex];
       }
     }
 
